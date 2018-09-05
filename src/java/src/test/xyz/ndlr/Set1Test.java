@@ -4,6 +4,7 @@ import org.junit.Assert;
 import org.junit.Test;
 import xyz.ndlr.set_1.Challenge1;
 import xyz.ndlr.set_1.Challenge2;
+import xyz.ndlr.set_1.Challenge3;
 import xyz.ndlr.utill.ConvertHelper;
 
 public class Set1Test {
@@ -37,5 +38,19 @@ public class Set1Test {
                 .hexToBytes(xorKey));
         byte[] expectedBytes = convertHelper.hexToBytes(expected);
         Assert.assertArrayEquals(expectedBytes, result);
+    }
+
+    @Test
+    public void challenge3() {
+        ConvertHelper convertHelper = new ConvertHelper();
+        Challenge3 challenge3 = new Challenge3();
+
+        String actual = "1b37373331363f78151b7f2b783431333d78397828372d363c78373e783a393b3736";
+        String expected = "Cooking MC's like a pound of bacon";
+
+        byte[] actualBytes = convertHelper.hexToBytes(actual);
+        byte[] result = challenge3.singleByteXORCipher(actualBytes);
+
+        Assert.assertArrayEquals(expected.getBytes(), result);
     }
 }
