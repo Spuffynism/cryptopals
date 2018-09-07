@@ -5,24 +5,24 @@ import xyz.ndlr.utill.ConvertHelper;
 import java.util.Arrays;
 
 public class Challenge3 {
-    private static final String ENGLISH_CHARACTERS =
-            "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ:'?! \".@";
+    private static int bestEver = 0;
+    public static final String ENGLISH_CHARACTERS =
+            "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ:'?!,- /\\\".@";
 
-    public byte[] singleByteXORCipher(byte[] xoredMessage) {
-        byte[] alphabet = ENGLISH_CHARACTERS.getBytes();
-
-        int bestScore = -1;
+    public XORComparison singleByteXORCipher(byte[] xoredMessage, byte[] alphabet) {
         byte[] bestXoredWithChar = new byte[xoredMessage.length];
+        int bestScore = -1;
+        char bestCharacter = (char) alphabet[0];
         for (byte character : alphabet) {
             byte[] currentXored = xorWithChar(xoredMessage, (char) character);
 
             int currentScore = calculateEnglishResemblanceScore(
-                    Arrays.copyOf(currentXored, currentXored.length),
-                    Arrays.copyOf(alphabet, alphabet.length));
+                    Arrays.copyOf(currentXored, currentXored.length));
 
             if (currentScore > bestScore) {
                 bestScore = currentScore;
                 bestXoredWithChar = Arrays.copyOf(currentXored, currentXored.length);
+                bestCharacter = (char) character;
 
                 // if the score is equal to the string's length, we must have found human text
                 if (currentScore == xoredMessage.length) {
@@ -31,7 +31,7 @@ public class Challenge3 {
             }
         }
 
-        return bestXoredWithChar;
+        return new XORComparison(bestXoredWithChar, bestScore, bestCharacter);
     }
 
     private byte[] xorWithChar(byte[] bytes, char xor) {
@@ -42,7 +42,9 @@ public class Challenge3 {
         return xoredWithChar;
     }
 
-    private int calculateEnglishResemblanceScore(byte[] bytes, byte[] alphabet) {
+    private int calculateEnglishResemblanceScore(byte[] bytes) {
+        byte[] alphabet = ENGLISH_CHARACTERS.getBytes();
+
         Arrays.sort(alphabet); // O(n log(n))
         Arrays.sort(bytes); // O(n log(n))
 

@@ -13,11 +13,15 @@ public class ConvertHelper {
         return DatatypeConverter.parseHexBinary(hexadecimalString);
     }
 
-    public String byteArrayToHexString(byte[] characters) {
+    public String bytesToHex(byte[] characters) {
         return DatatypeConverter.printHexBinary(characters);
     }
 
-    public String byteArrayToString(byte[] characters) {
+    public String bytesToString(byte[] characters) {
         return new String(characters);
+    }
+
+    public byte[] stringToBytes(String string) {
+        return string.getBytes();
     }
 }

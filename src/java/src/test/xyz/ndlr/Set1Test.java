@@ -2,9 +2,7 @@ package xyz.ndlr;
 
 import org.junit.Assert;
 import org.junit.Test;
-import xyz.ndlr.set_1.Challenge1;
-import xyz.ndlr.set_1.Challenge2;
-import xyz.ndlr.set_1.Challenge3;
+import xyz.ndlr.set_1.*;
 import xyz.ndlr.utill.ConvertHelper;
 
 public class Set1Test {
@@ -49,8 +47,22 @@ public class Set1Test {
         String expected = "Cooking MC's like a pound of bacon";
 
         byte[] actualBytes = convertHelper.hexToBytes(actual);
-        byte[] result = challenge3.singleByteXORCipher(actualBytes);
+        XORComparison result = challenge3.singleByteXORCipher(actualBytes,
+                Challenge3.ENGLISH_CHARACTERS.getBytes());
 
-        Assert.assertArrayEquals(expected.getBytes(), result);
+        Assert.assertArrayEquals(expected.getBytes(), result.getXoredWithChar());
+    }
+
+    @Test
+    public void challenge4() {
+        ConvertHelper convertHelper = new ConvertHelper();
+        Challenge4 challenge4 = new Challenge4(new Challenge3(), convertHelper);
+        byte[][] lines = challenge4.getFileContents("challenge_data/4.txt");
+
+        XORComparison actual = challenge4.detectSingleCharacterXOR(lines);
+        String expected = "Now that the party is jumping\n";
+
+        byte[] actualXoredWithChar = actual.getXoredWithChar();
+        Assert.assertArrayEquals(convertHelper.stringToBytes(expected), actualXoredWithChar);
     }
 }
