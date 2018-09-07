@@ -1,11 +1,8 @@
 package xyz.ndlr.set_1;
 
-import xyz.ndlr.utill.ConvertHelper;
-
 import java.util.Arrays;
 
 public class Challenge3 {
-    private static int bestEver = 0;
     public static final String ENGLISH_CHARACTERS =
             "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ:'?!,- /\\\".@";
 
