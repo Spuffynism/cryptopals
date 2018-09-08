@@ -2,7 +2,7 @@ package xyz.ndlr.utill;
 
 import javax.xml.bind.DatatypeConverter;
 
-public class ConvertHelper {
+public class ConvertionHelper {
     /**
      * Converts a hexadecimal string to a byte array
      *
@@ -10,6 +10,12 @@ public class ConvertHelper {
      * @return list of chars
      */
     public byte[] hexToBytes(String hexadecimalString) {
+        if (hexadecimalString.contains("\n")) {
+            String[] splitted = hexadecimalString.split("\n");
+
+            return DatatypeConverter.parseHexBinary(String.join("", splitted));
+        }
+
         return DatatypeConverter.parseHexBinary(hexadecimalString);
     }
 

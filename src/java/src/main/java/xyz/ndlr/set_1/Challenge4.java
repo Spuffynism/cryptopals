@@ -1,6 +1,6 @@
 package xyz.ndlr.set_1;
 
-import xyz.ndlr.utill.ConvertHelper;
+import xyz.ndlr.utill.ConvertionHelper;
 
 import java.io.File;
 import java.io.IOException;
@@ -11,11 +11,11 @@ import java.util.stream.Collectors;
 
 public class Challenge4 {
     private Challenge3 challenge3;
-    private ConvertHelper convertHelper;
+    private ConvertionHelper convertionHelper;
 
-    public Challenge4(Challenge3 challenge3, ConvertHelper convertHelper) {
+    public Challenge4(Challenge3 challenge3, ConvertionHelper convertionHelper) {
         this.challenge3 = challenge3;
-        this.convertHelper = convertHelper;
+        this.convertionHelper = convertionHelper;
     }
 
     public XORComparison detectSingleCharacterXOR(byte[][] strings) {
@@ -53,7 +53,7 @@ public class Challenge4 {
         }
 
         List<byte[]> byteLines = lines.stream()
-                .map(convertHelper::hexToBytes)
+                .map(convertionHelper::hexToBytes)
                 .collect(Collectors.toList());
 
         byte[][] bytesArray = new byte[lines.size()][byteLines.get(0).length];
