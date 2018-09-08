@@ -85,4 +85,26 @@ public class Set1Test {
         Assert.assertArrayEquals(expectedBytes, challenge5.repeatingKeyXOR(actualBytes,
                 actualKeyBytes));
     }
+
+    @Test
+    public void challenge6HammingDistance() {
+        ConvertionHelper convertionHelper = new ConvertionHelper();
+        Challenge6 challenge6 = new Challenge6(convertionHelper);
+
+        int expectedDistance = 37;
+        byte[] string1 = convertionHelper.stringToBytes("this is a test");
+        byte[] string2 = convertionHelper.stringToBytes("wokka wokka!!!");
+
+        int actualDistance = challenge6.computeHammingDistance(string1, string2);
+
+        Assert.assertEquals(expectedDistance, actualDistance);
+    }
+
+    @Test
+    public void challenge6() {
+        ConvertionHelper convertionHelper = new ConvertionHelper();
+        Challenge6 challenge6 = new Challenge6(convertionHelper);
+
+
+    }
 }
