@@ -30,4 +30,8 @@ public class ConvertionHelper {
     public byte[] stringToBytes(String string) {
         return string.getBytes();
     }
+
+    public String hexToString(String hex) {
+        return this.bytesToString(this.hexToBytes(hex));
+    }
 }

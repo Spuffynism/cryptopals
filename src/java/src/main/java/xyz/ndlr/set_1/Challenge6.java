@@ -12,7 +12,7 @@ import java.util.Scanner;
 public class Challenge6 {
     public static final int MIN_KEY_LENGTH = 2;
     public static final int MAX_KEY_LENGTH = 40;
-    public static final int BEST_GUESSES_TO_CHECK = 6;
+    public static final int BEST_GUESSES_TO_CHECK = 10;
 
     private Challenge4 challenge4;
     private Challenge5 challenge5;
@@ -26,11 +26,12 @@ public class Challenge6 {
         this.convertionHelper = convertionHelper;
     }
 
-    public byte[] breakRepeatingKeyXOR(byte[] base64Xored) {
+    public byte[][] breakRepeatingKeyXOR(byte[] base64Xored) {
         byte[] xored = this.decodeBase64(base64Xored);
         PriorityQueue<KeyDistance> queue = findBestGuesses(xored,
                 MIN_KEY_LENGTH, MAX_KEY_LENGTH);
 
+        byte[][] decrypted = new byte[BEST_GUESSES_TO_CHECK][xored.length];
         for (int i = 0; i < BEST_GUESSES_TO_CHECK; i++) {
             KeyDistance keyDistance = queue.poll();
             int keySize = keyDistance.getKeySize();
@@ -38,20 +39,17 @@ public class Challenge6 {
             byte[][] xoredSplit = this.splitIntoBlocks(xored, keySize);
             byte[][] transposedXoredSplit = transpose(xoredSplit);
 
-            XORComparison[] comparisons =
-                    challenge4.getAllBestSingleCharacterXOR(transposedXoredSplit);
+            XORComparison[] comparisons = challenge4.getAllBestSingleCharacterXOR
+                    (transposedXoredSplit);
 
             byte[] key = new byte[comparisons.length];
             for (int j = 0; j < comparisons.length; j++)
                 key[j] = (byte) comparisons[j].getCharacter();
 
-            System.out.println("KEY:::::::::::" + convertionHelper.bytesToString(key));
-
-            byte[] decrypted = challenge5.repeatingKeyXOR(xored, key);
-            System.out.println(convertionHelper.bytesToString(decrypted));
+            decrypted[i] = challenge5.repeatingKeyXOR(xored, key);
         }
 
-        return new byte[0];
+        return decrypted;
     }
 
     public PriorityQueue<KeyDistance> findBestGuesses(byte[] bytes,
@@ -122,9 +120,6 @@ public class Challenge6 {
         int distance = 0;
 
         while (xor != 0) {
-            if (xor <= 0)
-                System.out.println(xor);
-
             distance += ((byte) xor) & 1;
             xor >>= 1;
         }

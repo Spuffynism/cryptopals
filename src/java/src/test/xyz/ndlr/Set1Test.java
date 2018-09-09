@@ -5,8 +5,10 @@ import org.junit.Test;
 import xyz.ndlr.set_1.*;
 import xyz.ndlr.utill.ConvertionHelper;
 
+import java.util.Arrays;
 import java.util.Base64;
 import java.util.PriorityQueue;
+import java.util.stream.Stream;
 
 public class Set1Test {
     @Test
@@ -67,13 +69,6 @@ public class Set1Test {
 
         byte[] actualXoredWithChar = actual.getXoredWithChar();
         Assert.assertArrayEquals(convertionHelper.stringToBytes(expected), actualXoredWithChar);
-    }
-
-    @Test
-    public void challenge4GetAllBestSingleCharacterXOR() {
-        ChallengeFactory challengeFactory = new ChallengeFactory();
-        Challenge4 challenge4 = challengeFactory.getChallenge4();
-
     }
 
     @Test
@@ -246,39 +241,24 @@ public class Set1Test {
     }
 
     @Test
-    public void temp() {
-        ChallengeFactory challengeFactory = new ChallengeFactory();
-        Challenge5 challenge5 = challengeFactory.getChallenge5();
-
-        byte[] message = new byte[]{116, 104, 105, 115, 32, 105, 115, 32, 97, 32, 116, 101, 115,
-                116, 32, 109, 101, 115, 115, 97, 103, 101, 32, 116, 104, 105, 115, 32, 105, 115,
-                32, 97, 32, 116, 101, 115, 116, 32, 109, 101, 115, 115, 97, 103, 101, 32, 116,
-                104, 105, 115, 32, 105, 115, 32, 97, 32, 116, 101, 115, 116, 32, 109, 101, 115,
-                115, 97, 103, 101, 32, 116, 104, 105, 115, 32, 105, 115, 32, 97, 32, 116, 101,
-                115, 116, 32, 109, 101, 115, 115, 97, 103, 101, 32, 116, 104, 105, 115, 32, 105,
-                115, 32, 97, 32, 116, 101, 115, 116, 32, 109, 101, 115, 115, 97, 103, 101, 32,
-                116, 104, 105, 115, 32, 105, 115, 32, 97, 32, 116, 101, 115, 116, 32, 109, 101,
-                115, 115, 97, 103, 101, 32, 116, 104, 105, 115, 32, 105, 115, 32, 97, 32, 116,
-                101, 115, 116, 32, 109, 101, 115, 115, 97, 103, 101, 32, 116, 104, 105, 115, 32,
-                105, 115, 32, 97, 32, 116, 101, 115, 116, 32, 109, 101, 115, 115, 97, 103, 101,
-                32, 116, 104, 105, 115, 32, 105, 115, 32, 97, 32, 116, 101, 115, 116, 32, 109,
-                101, 115, 115, 97, 103, 101};
-        byte[] key = new byte[]{107, 101, 121};
-
-        Base64.Encoder encoder = Base64.getEncoder();
-
-        System.out.println(encoder.encodeToString(challenge5.repeatingKeyXOR(message, key)));
-    }
-
-    @Test
     public void challenge6() {
         ChallengeFactory challengeFactory = new ChallengeFactory();
         Challenge6 challenge6 = challengeFactory.getChallenge6();
         ConvertionHelper convertionHelper = new ConvertionHelper();
+
+        byte[] solution = challenge6.getFileContents("challenge_data/6_solution.txt");
         byte[] base64Xored = challenge6.getFileContents("challenge_data/6.txt");
 
-        String result = convertionHelper.bytesToString(challenge6.breakRepeatingKeyXOR
-                (base64Xored));
-        //System.out.println(result);
+        byte[][] guesses = challenge6.breakRepeatingKeyXOR(base64Xored);
+
+        Base64.Decoder decoder = Base64.getDecoder();
+        byte[] decodedSolution = decoder.decode(solution);
+
+        Assert.assertTrue(Stream.of(guesses)
+                .anyMatch(guess -> {
+                    Object[] current = new Object[]{guess};
+                    Object[] expected = new Object[]{decodedSolution};
+                    return Arrays.deepEquals(current, expected);
+                }));
     }
 }
