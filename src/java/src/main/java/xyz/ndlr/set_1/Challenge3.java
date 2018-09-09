@@ -4,7 +4,7 @@ import java.util.Arrays;
 
 public class Challenge3 {
     public static final String ENGLISH_CHARACTERS =
-            "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ:'?!,- /\\\".@";
+            "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ:'?!,- /\\\".@\n";
 
     public XORComparison singleByteXORCipher(byte[] xoredMessage, byte[] alphabet) {
         byte[] bestXoredWithChar = new byte[xoredMessage.length];
@@ -39,6 +39,7 @@ public class Challenge3 {
         return xoredWithChar;
     }
 
+    // TODO: Change this for a markov chain test
     private int calculateEnglishResemblanceScore(byte[] bytes) {
         byte[] alphabet = ENGLISH_CHARACTERS.getBytes();
 
@@ -57,6 +58,15 @@ public class Challenge3 {
                 j++;
             }
         }
+
+        /*
+        // Checks that the content has spaces in it
+        byte space = (byte) ' ';
+
+        for (int i = 0; i < bytes.length; i++) {
+            if (bytes[i] == space)
+                return resemblance;
+        }*/
 
         return resemblance;
     }
