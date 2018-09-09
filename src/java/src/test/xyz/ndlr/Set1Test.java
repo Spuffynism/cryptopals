@@ -89,7 +89,8 @@ public class Set1Test {
     @Test
     public void challenge6HammingDistance() {
         ConvertionHelper convertionHelper = new ConvertionHelper();
-        Challenge6 challenge6 = new Challenge6(convertionHelper);
+        Challenge4 challenge4 = new Challenge4(new Challenge3(), convertionHelper);
+        Challenge6 challenge6 = new Challenge6(challenge4, new Challenge5(), convertionHelper);
 
         int expectedDistance = 37;
         byte[] string1 = convertionHelper.stringToBytes("this is a test");
@@ -103,8 +104,12 @@ public class Set1Test {
     @Test
     public void challenge6() {
         ConvertionHelper convertionHelper = new ConvertionHelper();
-        Challenge6 challenge6 = new Challenge6(convertionHelper);
+        Challenge4 challenge4 = new Challenge4(new Challenge3(), convertionHelper);
+        Challenge6 challenge6 = new Challenge6(challenge4, new Challenge5(), convertionHelper);
+        byte[] base64Xored = challenge6.getFileContents("challenge_data/6.txt");
 
-
+        String result = convertionHelper.bytesToString(challenge6.breakRepeatingKeyXOR
+                (base64Xored));
+        //System.out.println(result);
     }
 }

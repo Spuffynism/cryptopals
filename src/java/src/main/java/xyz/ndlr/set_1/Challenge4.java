@@ -36,6 +36,22 @@ public class Challenge4 {
         return bestComparison;
     }
 
+    public XORComparison[] getAllBestSingleCharacterXOR(byte[][] strings) {
+        XORComparison[] allBestXORs = new XORComparison[strings.length];
+
+        byte[] alphabet = new byte[255];
+        for (int i = 1; i < 255; i++)
+            alphabet[i - 1] = (byte) i;
+
+        for (int i = 0; i < strings.length; i++) {
+            allBestXORs[i] = this.challenge3
+                    .singleByteXORCipher(strings[i], alphabet);
+        }
+
+        return allBestXORs;
+    }
+
+
     public byte[][] getFileContents(String fileName) {
         List<String> lines = new ArrayList<>();
 
