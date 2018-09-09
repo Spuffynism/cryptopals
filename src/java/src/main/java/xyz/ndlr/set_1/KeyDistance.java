@@ -1,17 +1,21 @@
 package xyz.ndlr.set_1;
 
 public class KeyDistance implements Comparable<KeyDistance> {
-    private static final int MIN_KEY_SIZE = 2;
+    /**
+     * The comparison result is casted to an int, so we shift the numbers to the
+     * left not to lose too much precision.
+     */
+    private static final int COMPARISON_PRECISION = 100_000;
 
-    private float distance;
+    private double distance;
     private int keySize;
 
-    public KeyDistance(float distance, int keySize) {
+    public KeyDistance(double distance, int keySize) {
         this.distance = distance;
         this.keySize = keySize;
     }
 
-    public float getDistance() {
+    public double getDistance() {
         return distance;
     }
 
@@ -21,7 +25,7 @@ public class KeyDistance implements Comparable<KeyDistance> {
 
     @Override
     public int compareTo(KeyDistance other) {
-        return (int) (this.distance - other.distance);
+        return (int) ((this.distance - other.distance) * COMPARISON_PRECISION);
     }
 
     @Override
