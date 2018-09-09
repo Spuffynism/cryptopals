@@ -10,6 +10,10 @@ import java.util.PriorityQueue;
 import java.util.Scanner;
 
 public class Challenge6 {
+    public static final int MIN_KEY_LENGTH = 2;
+    public static final int MAX_KEY_LENGTH = 40;
+    public static final int BEST_GUESSES_TO_CHECK = 6;
+
     private Challenge4 challenge4;
     private Challenge5 challenge5;
     private ConvertionHelper convertionHelper;
@@ -23,41 +27,15 @@ public class Challenge6 {
     }
 
     public byte[] breakRepeatingKeyXOR(byte[] base64Xored) {
-        PriorityQueue<KeyDistance> queue = new PriorityQueue<>(KeyDistance::compareTo);
-
         byte[] xored = this.decodeBase64(base64Xored);
+        PriorityQueue<KeyDistance> queue = findBestGuesses(xored,
+                MIN_KEY_LENGTH, MAX_KEY_LENGTH);
 
-        for (int keySize = 2; keySize <= 42; keySize++) {
-            byte[] first = Arrays.copyOfRange(xored, 0, keySize);
-            byte[] second = Arrays.copyOfRange(xored, keySize, keySize * 2);
-            byte[] third = Arrays.copyOfRange(xored, keySize * 2, keySize * 3);
-            byte[] fourth = Arrays.copyOfRange(xored, keySize * 3, keySize * 4);
-
-            int editDistance = computeHammingDistance(first, second);
-            float normalizedEditDistance = ((float) editDistance) / (float) keySize;
-
-            int editDistance2 = computeHammingDistance(third, fourth);
-            float normalizedEditDistance2 = ((float) editDistance2) / (float) keySize;
-
-            float averageNormalizedEditDistance = (normalizedEditDistance +
-                    normalizedEditDistance2) / 2;
-
-            queue.add(new KeyDistance(averageNormalizedEditDistance, keySize));
-        }
-
-        for (int i = 0; i < 3; i++) {
+        for (int i = 0; i < BEST_GUESSES_TO_CHECK; i++) {
             KeyDistance keyDistance = queue.poll();
             int keySize = keyDistance.getKeySize();
-            byte[][] xoredSplit =
-                    new byte[xored.length / keySize][keySize];
 
-            for (int j = 0; j < xoredSplit.length; j++) {
-                int from = j * keySize;
-                int to = from + keySize;
-
-                xoredSplit[j] = Arrays.copyOfRange(xored, from, to);
-            }
-
+            byte[][] xoredSplit = this.splitIntoBlocks(xored, keySize);
             byte[][] transposedXoredSplit = transpose(xoredSplit);
 
             XORComparison[] comparisons =
@@ -67,13 +45,52 @@ public class Challenge6 {
             for (int j = 0; j < comparisons.length; j++)
                 key[j] = (byte) comparisons[j].getCharacter();
 
+            System.out.println("KEY:::::::::::" + convertionHelper.bytesToString(key));
+
             byte[] decrypted = challenge5.repeatingKeyXOR(xored, key);
+            System.out.println(convertionHelper.bytesToString(decrypted));
         }
 
         return new byte[0];
     }
 
-    private byte[][] transpose(byte[][] matrix) {
+    public PriorityQueue<KeyDistance> findBestGuesses(byte[] bytes,
+                                                      int minKeyLength,
+                                                      int maxKeyLength) {
+        PriorityQueue<KeyDistance> bestGuesses = new PriorityQueue<>(KeyDistance::compareTo);
+
+        for (int keySize = minKeyLength; keySize <= maxKeyLength; keySize++) {
+            byte[] first = Arrays.copyOfRange(bytes, 0, keySize);
+            byte[] second = Arrays.copyOfRange(bytes, keySize, keySize * 2);
+            byte[] third = Arrays.copyOfRange(bytes, keySize * 2, keySize * 3);
+            byte[] fourth = Arrays.copyOfRange(bytes, keySize * 3, keySize * 4);
+
+            double editDistance = computeHammingDistance(first, second);
+            double editDistance2 = computeHammingDistance(third, fourth);
+
+            double averageNormalizedEditDistance =
+                    (editDistance + editDistance2) / 2 / keySize;
+
+            bestGuesses.add(new KeyDistance(averageNormalizedEditDistance, keySize));
+        }
+
+        return bestGuesses;
+    }
+
+    public byte[][] splitIntoBlocks(byte[] bytes, int size) {
+        byte[][] blocks = new byte[(bytes.length + size - 1) / size][size];
+
+        for (int i = 0; i < blocks.length; i++) {
+            int from = i * size;
+            int to = from + size;
+
+            blocks[i] = Arrays.copyOfRange(bytes, from, to);
+        }
+
+        return blocks;
+    }
+
+    public byte[][] transpose(byte[][] matrix) {
         byte[][] transposed = new byte[matrix[0].length][matrix.length];
         for (int i = 0; i < matrix.length; i++) {
             for (int j = 0; j < matrix[0].length; j++) {
@@ -101,11 +118,14 @@ public class Challenge6 {
     }
 
     private int computeHammingDistance(byte character1, byte character2) {
-        byte xor = (byte) (character1 ^ character2);
-        byte distance = 0;
+        int xor = ((byte) (character1 ^ character2)) & 0xFF;
+        int distance = 0;
 
         while (xor != 0) {
-            distance += xor & 1;
+            if (xor <= 0)
+                System.out.println(xor);
+
+            distance += ((byte) xor) & 1;
             xor >>= 1;
         }
 

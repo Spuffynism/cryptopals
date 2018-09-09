@@ -5,6 +5,9 @@ import org.junit.Test;
 import xyz.ndlr.set_1.*;
 import xyz.ndlr.utill.ConvertionHelper;
 
+import java.util.Base64;
+import java.util.PriorityQueue;
+
 public class Set1Test {
     @Test
     public void challenge1() {
@@ -67,6 +70,13 @@ public class Set1Test {
     }
 
     @Test
+    public void challenge4GetAllBestSingleCharacterXOR() {
+        ChallengeFactory challengeFactory = new ChallengeFactory();
+        Challenge4 challenge4 = challengeFactory.getChallenge4();
+
+    }
+
+    @Test
     public void challenge5() {
         ConvertionHelper convertionHelper = new ConvertionHelper();
         Challenge5 challenge5 = new Challenge5();
@@ -87,10 +97,10 @@ public class Set1Test {
     }
 
     @Test
-    public void challenge6HammingDistance() {
+    public void challenge6ComputeHammingDistance() {
+        ChallengeFactory challengeFactory = new ChallengeFactory();
+        Challenge6 challenge6 = challengeFactory.getChallenge6();
         ConvertionHelper convertionHelper = new ConvertionHelper();
-        Challenge4 challenge4 = new Challenge4(new Challenge3(), convertionHelper);
-        Challenge6 challenge6 = new Challenge6(challenge4, new Challenge5(), convertionHelper);
 
         int expectedDistance = 37;
         byte[] string1 = convertionHelper.stringToBytes("this is a test");
@@ -102,10 +112,169 @@ public class Set1Test {
     }
 
     @Test
+    public void challenge6Transpose() {
+        ChallengeFactory challengeFactory = new ChallengeFactory();
+        Challenge6 challenge6 = challengeFactory.getChallenge6();
+
+        byte[][] matrix = new byte[][]{
+                {1, 2, 3},
+                {4, 5, 6},
+                {7, 8, 9}
+        };
+
+        byte[][] expected = new byte[][]{
+                {1, 4, 7},
+                {2, 5, 8},
+                {3, 6, 9}
+        };
+
+        Assert.assertArrayEquals(expected, challenge6.transpose(matrix));
+    }
+
+    @Test
+    public void challenge6SplitIntoBlocksEven() {
+        ChallengeFactory challengeFactory = new ChallengeFactory();
+        Challenge6 challenge6 = challengeFactory.getChallenge6();
+
+        byte[] bytes = new byte[]{2, 2, 3, 3, 4, 4};
+        int blockSize = 2;
+        byte[][] expected = new byte[][]{
+                {2, 2},
+                {3, 3},
+                {4, 4}
+        };
+
+        Assert.assertArrayEquals(expected, challenge6.splitIntoBlocks(bytes, blockSize));
+    }
+
+    @Test
+    public void challenge6SplitIntoBlocksOdd() {
+        ChallengeFactory challengeFactory = new ChallengeFactory();
+        Challenge6 challenge6 = challengeFactory.getChallenge6();
+
+        byte[] bytes = new byte[]{2, 2, 3, 3, 4, 4, 5};
+        int blockSize = 2;
+        byte[][] expected = new byte[][]{
+                {2, 2},
+                {3, 3},
+                {4, 4},
+                {5, 0}
+        };
+
+        Assert.assertArrayEquals(expected, challenge6.splitIntoBlocks(bytes, blockSize));
+    }
+
+    @Test
+    public void findBestGuessesEasy() {
+        ChallengeFactory challengeFactory = new ChallengeFactory();
+        Challenge6 challenge6 = challengeFactory.getChallenge6();
+
+        byte[] bytes = new byte[40 * 4];
+        byte[] choices = new byte[]{0b111, 0b101};
+        for (int i = 0; i < bytes.length; i++) {
+            bytes[i] = choices[i % choices.length];
+        }
+
+        PriorityQueue<KeyDistance> bestGuesses = challenge6.findBestGuesses(bytes,
+                Challenge6.MIN_KEY_LENGTH, Challenge6.MAX_KEY_LENGTH);
+        KeyDistance bestGuess = bestGuesses.poll();
+        KeyDistance secondBestGuess = bestGuesses.poll();
+        KeyDistance thirdBestGuess = bestGuesses.poll();
+
+        Assert.assertEquals(0, bestGuess.getDistance(), 0d);
+        Assert.assertEquals(2, bestGuess.getKeySize());
+        Assert.assertEquals(0, secondBestGuess.getDistance(), 0d);
+        Assert.assertEquals(6, secondBestGuess.getKeySize());
+        Assert.assertEquals(0, thirdBestGuess.getDistance(), 0d);
+        Assert.assertEquals(10, thirdBestGuess.getKeySize());
+    }
+
+    @Test
+    public void findBestGuessesXored() {
+        ChallengeFactory challengeFactory = new ChallengeFactory();
+        Challenge5 challenge5 = challengeFactory.getChallenge5();
+        Challenge6 challenge6 = challengeFactory.getChallenge6();
+
+        byte[] bytes = new byte[40 * 4];
+        byte[] xor = new byte[]{0b111, 0b101, 0b101};
+        for (int i = 0; i < bytes.length; i++) {
+            bytes[i] = (byte) i;
+        }
+
+        byte[] xored = challenge5.repeatingKeyXOR(bytes, xor);
+        PriorityQueue<KeyDistance> bestGuesses = challenge6.findBestGuesses(xored,
+                1, 32);
+
+        KeyDistance bestGuess = bestGuesses.poll();
+        KeyDistance secondBestGuess = bestGuesses.poll();
+        KeyDistance thirdBestGuess = bestGuesses.poll();
+
+        Assert.assertEquals(0.25, bestGuess.getDistance(), 0d);
+        Assert.assertEquals(2, bestGuess.getKeySize());
+        Assert.assertEquals(1.67, secondBestGuess.getDistance(), 0.01d);
+        Assert.assertEquals(32, secondBestGuess.getKeySize());
+        Assert.assertEquals(1.68, thirdBestGuess.getDistance(), 0.01d);
+        Assert.assertEquals(8, thirdBestGuess.getKeySize());
+    }
+
+    @Test
+    public void findBestGuessesXoredShort() {
+        ChallengeFactory challengeFactory = new ChallengeFactory();
+        Challenge5 challenge5 = challengeFactory.getChallenge5();
+        Challenge6 challenge6 = challengeFactory.getChallenge6();
+
+        byte item = 0b111;
+        byte xor = 0b101;
+
+        int maxKeyLength = 2;
+        byte[] bytes = new byte[maxKeyLength * 4];
+        for (int i = 0; i < bytes.length; i++) {
+            bytes[i] = item;
+        }
+
+        byte[] xored = challenge5.repeatingKeyXOR(bytes, new byte[]{xor});
+        PriorityQueue<KeyDistance> bestGuesses = challenge6.findBestGuesses(xored,
+                1, maxKeyLength);
+
+        KeyDistance bestGuess = bestGuesses.poll();
+        KeyDistance secondBestGuess = bestGuesses.poll();
+
+        Assert.assertEquals(0, bestGuess.getDistance(), 0d);
+        Assert.assertEquals(1, bestGuess.getKeySize());
+        Assert.assertEquals(0, secondBestGuess.getDistance(), 0d);
+        Assert.assertEquals(2, secondBestGuess.getKeySize());
+    }
+
+    @Test
+    public void temp() {
+        ChallengeFactory challengeFactory = new ChallengeFactory();
+        Challenge5 challenge5 = challengeFactory.getChallenge5();
+
+        byte[] message = new byte[]{116, 104, 105, 115, 32, 105, 115, 32, 97, 32, 116, 101, 115,
+                116, 32, 109, 101, 115, 115, 97, 103, 101, 32, 116, 104, 105, 115, 32, 105, 115,
+                32, 97, 32, 116, 101, 115, 116, 32, 109, 101, 115, 115, 97, 103, 101, 32, 116,
+                104, 105, 115, 32, 105, 115, 32, 97, 32, 116, 101, 115, 116, 32, 109, 101, 115,
+                115, 97, 103, 101, 32, 116, 104, 105, 115, 32, 105, 115, 32, 97, 32, 116, 101,
+                115, 116, 32, 109, 101, 115, 115, 97, 103, 101, 32, 116, 104, 105, 115, 32, 105,
+                115, 32, 97, 32, 116, 101, 115, 116, 32, 109, 101, 115, 115, 97, 103, 101, 32,
+                116, 104, 105, 115, 32, 105, 115, 32, 97, 32, 116, 101, 115, 116, 32, 109, 101,
+                115, 115, 97, 103, 101, 32, 116, 104, 105, 115, 32, 105, 115, 32, 97, 32, 116,
+                101, 115, 116, 32, 109, 101, 115, 115, 97, 103, 101, 32, 116, 104, 105, 115, 32,
+                105, 115, 32, 97, 32, 116, 101, 115, 116, 32, 109, 101, 115, 115, 97, 103, 101,
+                32, 116, 104, 105, 115, 32, 105, 115, 32, 97, 32, 116, 101, 115, 116, 32, 109,
+                101, 115, 115, 97, 103, 101};
+        byte[] key = new byte[]{107, 101, 121};
+
+        Base64.Encoder encoder = Base64.getEncoder();
+
+        System.out.println(encoder.encodeToString(challenge5.repeatingKeyXOR(message, key)));
+    }
+
+    @Test
     public void challenge6() {
+        ChallengeFactory challengeFactory = new ChallengeFactory();
+        Challenge6 challenge6 = challengeFactory.getChallenge6();
         ConvertionHelper convertionHelper = new ConvertionHelper();
-        Challenge4 challenge4 = new Challenge4(new Challenge3(), convertionHelper);
-        Challenge6 challenge6 = new Challenge6(challenge4, new Challenge5(), convertionHelper);
         byte[] base64Xored = challenge6.getFileContents("challenge_data/6.txt");
 
         String result = convertionHelper.bytesToString(challenge6.breakRepeatingKeyXOR
