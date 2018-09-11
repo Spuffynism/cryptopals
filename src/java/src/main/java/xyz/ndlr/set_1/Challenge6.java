@@ -1,13 +1,11 @@
 package xyz.ndlr.set_1;
 
-import xyz.ndlr.utill.ConvertionHelper;
+import xyz.ndlr.utill.ArrayUtil;
+import xyz.ndlr.utill.FileUtil;
 
-import java.io.File;
-import java.io.IOException;
 import java.util.Arrays;
 import java.util.Base64;
 import java.util.PriorityQueue;
-import java.util.Scanner;
 
 public class Challenge6 {
     public static final int MIN_KEY_LENGTH = 2;
@@ -16,14 +14,17 @@ public class Challenge6 {
 
     private Challenge4 challenge4;
     private Challenge5 challenge5;
-    private ConvertionHelper convertionHelper;
+    private ArrayUtil arrayUtil;
+    private FileUtil fileUtil;
 
 
-    public Challenge6(Challenge4 challenge4, Challenge5 challenge5, ConvertionHelper
-            convertionHelper) {
+    public Challenge6(Challenge4 challenge4, Challenge5 challenge5,
+                      ArrayUtil arrayUtil,
+                      FileUtil fileUtil) {
         this.challenge4 = challenge4;
         this.challenge5 = challenge5;
-        this.convertionHelper = convertionHelper;
+        this.arrayUtil = arrayUtil;
+        this.fileUtil = fileUtil;
     }
 
     public byte[][] breakRepeatingKeyXOR(byte[] base64Xored) {
@@ -36,8 +37,8 @@ public class Challenge6 {
             KeyDistance keyDistance = queue.poll();
             int keySize = keyDistance.getKeySize();
 
-            byte[][] xoredSplit = this.splitIntoBlocks(xored, keySize);
-            byte[][] transposedXoredSplit = transpose(xoredSplit);
+            byte[][] xoredSplit = arrayUtil.splitIntoBlocks(xored, keySize);
+            byte[][] transposedXoredSplit = arrayUtil.transpose(xoredSplit);
 
             XORComparison[] comparisons = challenge4.getAllBestSingleCharacterXOR
                     (transposedXoredSplit);
@@ -75,30 +76,6 @@ public class Challenge6 {
         return bestGuesses;
     }
 
-    public byte[][] splitIntoBlocks(byte[] bytes, int size) {
-        byte[][] blocks = new byte[(bytes.length + size - 1) / size][size];
-
-        for (int i = 0; i < blocks.length; i++) {
-            int from = i * size;
-            int to = from + size;
-
-            blocks[i] = Arrays.copyOfRange(bytes, from, to);
-        }
-
-        return blocks;
-    }
-
-    public byte[][] transpose(byte[][] matrix) {
-        byte[][] transposed = new byte[matrix[0].length][matrix.length];
-        for (int i = 0; i < matrix.length; i++) {
-            for (int j = 0; j < matrix[0].length; j++) {
-                transposed[j][i] = matrix[i][j];
-            }
-        }
-
-        return transposed;
-    }
-
     private byte[] decodeBase64(byte[] base64Encoded) {
         Base64.Decoder decoder = Base64.getDecoder();
 
@@ -128,20 +105,6 @@ public class Challenge6 {
     }
 
     public byte[] getFileContents(String fileName) {
-        StringBuilder builder = new StringBuilder();
-
-        ClassLoader classLoader = getClass().getClassLoader();
-        File file = new File(classLoader.getResource(fileName).getFile());
-
-        try (Scanner scanner = new Scanner(file)) {
-            while (scanner.hasNextLine()) {
-                String line = scanner.nextLine();
-                builder.append(line);
-            }
-        } catch (IOException e) {
-            e.printStackTrace();
-        }
-
-        return convertionHelper.stringToBytes(builder.toString());
+        return fileUtil.getResource(fileName);
     }
 }

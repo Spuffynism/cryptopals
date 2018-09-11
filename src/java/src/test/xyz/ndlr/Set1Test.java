@@ -1,9 +1,11 @@
 package xyz.ndlr;
 
 import org.junit.Assert;
+import org.junit.Before;
 import org.junit.Test;
 import xyz.ndlr.set_1.*;
 import xyz.ndlr.utill.ConvertionHelper;
+import xyz.ndlr.utill.FileUtil;
 
 import java.util.Arrays;
 import java.util.Base64;
@@ -11,9 +13,19 @@ import java.util.PriorityQueue;
 import java.util.stream.Stream;
 
 public class Set1Test {
+
+    private ConvertionHelper convertionHelper;
+    private ChallengeFactory challengeFactory;
+
+    @Before
+    public void before() {
+        convertionHelper = new ConvertionHelper();
+        challengeFactory = new ChallengeFactory();
+    }
+
+
     @Test
     public void challenge1() {
-        ConvertionHelper convertionHelper = new ConvertionHelper();
         Challenge1 challenge1 = new Challenge1();
 
         String input =
@@ -30,7 +42,6 @@ public class Set1Test {
 
     @Test
     public void challenge2() {
-        ConvertionHelper convertionHelper = new ConvertionHelper();
         Challenge2 challenge2 = new Challenge2();
 
         String actual = "1c0111001f010100061a024b53535009181c";
@@ -45,7 +56,6 @@ public class Set1Test {
 
     @Test
     public void challenge3() {
-        ConvertionHelper convertionHelper = new ConvertionHelper();
         Challenge3 challenge3 = new Challenge3();
 
         String actual = "1b37373331363f78151b7f2b783431333d78397828372d363c78373e783a393b3736";
@@ -60,7 +70,6 @@ public class Set1Test {
 
     @Test
     public void challenge4() {
-        ConvertionHelper convertionHelper = new ConvertionHelper();
         Challenge4 challenge4 = new Challenge4(new Challenge3(), convertionHelper);
         byte[][] lines = challenge4.getFileContents("challenge_data/4.txt");
 
@@ -73,7 +82,6 @@ public class Set1Test {
 
     @Test
     public void challenge5() {
-        ConvertionHelper convertionHelper = new ConvertionHelper();
         Challenge5 challenge5 = new Challenge5();
 
         String actual = "Burning 'em, if you ain't quick and nimble\n" +
@@ -93,9 +101,7 @@ public class Set1Test {
 
     @Test
     public void challenge6ComputeHammingDistance() {
-        ChallengeFactory challengeFactory = new ChallengeFactory();
         Challenge6 challenge6 = challengeFactory.getChallenge6();
-        ConvertionHelper convertionHelper = new ConvertionHelper();
 
         int expectedDistance = 37;
         byte[] string1 = convertionHelper.stringToBytes("this is a test");
@@ -107,61 +113,7 @@ public class Set1Test {
     }
 
     @Test
-    public void challenge6Transpose() {
-        ChallengeFactory challengeFactory = new ChallengeFactory();
-        Challenge6 challenge6 = challengeFactory.getChallenge6();
-
-        byte[][] matrix = new byte[][]{
-                {1, 2, 3},
-                {4, 5, 6},
-                {7, 8, 9}
-        };
-
-        byte[][] expected = new byte[][]{
-                {1, 4, 7},
-                {2, 5, 8},
-                {3, 6, 9}
-        };
-
-        Assert.assertArrayEquals(expected, challenge6.transpose(matrix));
-    }
-
-    @Test
-    public void challenge6SplitIntoBlocksEven() {
-        ChallengeFactory challengeFactory = new ChallengeFactory();
-        Challenge6 challenge6 = challengeFactory.getChallenge6();
-
-        byte[] bytes = new byte[]{2, 2, 3, 3, 4, 4};
-        int blockSize = 2;
-        byte[][] expected = new byte[][]{
-                {2, 2},
-                {3, 3},
-                {4, 4}
-        };
-
-        Assert.assertArrayEquals(expected, challenge6.splitIntoBlocks(bytes, blockSize));
-    }
-
-    @Test
-    public void challenge6SplitIntoBlocksOdd() {
-        ChallengeFactory challengeFactory = new ChallengeFactory();
-        Challenge6 challenge6 = challengeFactory.getChallenge6();
-
-        byte[] bytes = new byte[]{2, 2, 3, 3, 4, 4, 5};
-        int blockSize = 2;
-        byte[][] expected = new byte[][]{
-                {2, 2},
-                {3, 3},
-                {4, 4},
-                {5, 0}
-        };
-
-        Assert.assertArrayEquals(expected, challenge6.splitIntoBlocks(bytes, blockSize));
-    }
-
-    @Test
     public void findBestGuessesEasy() {
-        ChallengeFactory challengeFactory = new ChallengeFactory();
         Challenge6 challenge6 = challengeFactory.getChallenge6();
 
         byte[] bytes = new byte[40 * 4];
@@ -186,7 +138,6 @@ public class Set1Test {
 
     @Test
     public void findBestGuessesXored() {
-        ChallengeFactory challengeFactory = new ChallengeFactory();
         Challenge5 challenge5 = challengeFactory.getChallenge5();
         Challenge6 challenge6 = challengeFactory.getChallenge6();
 
@@ -214,7 +165,6 @@ public class Set1Test {
 
     @Test
     public void findBestGuessesXoredShort() {
-        ChallengeFactory challengeFactory = new ChallengeFactory();
         Challenge5 challenge5 = challengeFactory.getChallenge5();
         Challenge6 challenge6 = challengeFactory.getChallenge6();
 
@@ -242,12 +192,11 @@ public class Set1Test {
 
     @Test
     public void challenge6() {
-        ChallengeFactory challengeFactory = new ChallengeFactory();
         Challenge6 challenge6 = challengeFactory.getChallenge6();
-        ConvertionHelper convertionHelper = new ConvertionHelper();
+        FileUtil fileUtil = new FileUtil(new ConvertionHelper());
 
-        byte[] solution = challenge6.getFileContents("challenge_data/6_solution.txt");
-        byte[] base64Xored = challenge6.getFileContents("challenge_data/6.txt");
+        byte[] solution = fileUtil.getResource("challenge_data/6_solution.txt");
+        byte[] base64Xored = fileUtil.getResource("challenge_data/6.txt");
 
         byte[][] guesses = challenge6.breakRepeatingKeyXOR(base64Xored);
 
@@ -260,5 +209,11 @@ public class Set1Test {
                     Object[] expected = new Object[]{decodedSolution};
                     return Arrays.deepEquals(current, expected);
                 }));
+    }
+
+    @Test
+    public void challenge7() {
+        String key = "YELLOW SUBMARINE";
+        Assert.assertTrue(false);
     }
 }
