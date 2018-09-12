@@ -4,16 +4,16 @@ import java.util.Arrays;
 
 public class Challenge3 {
     public static final String ENGLISH_CHARACTERS =
-            "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ:'?!,- /\\\".@\n";
+            "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ:'?!,- /\\\".@\r\n";
 
     public XORComparison singleByteXORCipher(byte[] xoredMessage, byte[] alphabet) {
         byte[] bestXoredWithChar = new byte[xoredMessage.length];
-        int bestScore = -1;
+        double bestScore = -1;
         char bestCharacter = (char) alphabet[0];
         for (byte character : alphabet) {
             byte[] currentXored = xorWithChar(xoredMessage, (char) character);
 
-            int currentScore = calculateEnglishResemblanceScore(
+            double currentScore = calculateEnglishResemblanceFactor(
                     Arrays.copyOf(currentXored, currentXored.length));
 
             if (currentScore > bestScore) {
@@ -40,7 +40,7 @@ public class Challenge3 {
     }
 
     // TODO: Change this for a markov chain test
-    private int calculateEnglishResemblanceScore(byte[] bytes) {
+    public double calculateEnglishResemblanceFactor(byte[] bytes) {
         byte[] alphabet = ENGLISH_CHARACTERS.getBytes();
 
         Arrays.sort(alphabet); // O(n log(n))
@@ -68,6 +68,6 @@ public class Challenge3 {
                 return resemblance;
         }*/
 
-        return resemblance;
+        return (double) resemblance / (double) bytes.length;
     }
 }

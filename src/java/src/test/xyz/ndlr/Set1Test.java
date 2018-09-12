@@ -113,7 +113,7 @@ public class Set1Test {
     }
 
     @Test
-    public void findBestGuessesEasy() {
+    public void challenge6FindBestGuessesEasy() {
         Challenge6 challenge6 = challengeFactory.getChallenge6();
 
         byte[] bytes = new byte[40 * 4];
@@ -137,7 +137,7 @@ public class Set1Test {
     }
 
     @Test
-    public void findBestGuessesXored() {
+    public void challenge6FindBestGuessesXored() {
         Challenge5 challenge5 = challengeFactory.getChallenge5();
         Challenge6 challenge6 = challengeFactory.getChallenge6();
 
@@ -164,7 +164,7 @@ public class Set1Test {
     }
 
     @Test
-    public void findBestGuessesXoredShort() {
+    public void challenge6FindBestGuessesXoredShort() {
         Challenge5 challenge5 = challengeFactory.getChallenge5();
         Challenge6 challenge6 = challengeFactory.getChallenge6();
 
@@ -203,12 +203,7 @@ public class Set1Test {
         Base64.Decoder decoder = Base64.getDecoder();
         byte[] decodedSolution = decoder.decode(solution);
 
-        Assert.assertTrue(Stream.of(guesses)
-                .anyMatch(guess -> {
-                    Object[] current = new Object[]{guess};
-                    Object[] expected = new Object[]{decodedSolution};
-                    return Arrays.deepEquals(current, expected);
-                }));
+        Assert.assertArrayEquals(decodedSolution, guesses[0]);
     }
 
     @Test

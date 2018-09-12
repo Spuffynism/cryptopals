@@ -1,7 +1,6 @@
 package xyz.ndlr.set_1;
 
 import xyz.ndlr.utill.ArrayUtil;
-import xyz.ndlr.utill.FileUtil;
 
 import java.util.Arrays;
 import java.util.Base64;
@@ -10,31 +9,29 @@ import java.util.PriorityQueue;
 public class Challenge6 {
     public static final int MIN_KEY_LENGTH = 2;
     public static final int MAX_KEY_LENGTH = 40;
-    public static final int BEST_GUESSES_TO_CHECK = 10;
 
+    private Challenge3 challenge3;
     private Challenge4 challenge4;
     private Challenge5 challenge5;
     private ArrayUtil arrayUtil;
-    private FileUtil fileUtil;
 
 
-    public Challenge6(Challenge4 challenge4, Challenge5 challenge5,
-                      ArrayUtil arrayUtil,
-                      FileUtil fileUtil) {
+    public Challenge6(Challenge3 challenge3, Challenge4 challenge4,
+                      Challenge5 challenge5, ArrayUtil arrayUtil) {
+        this.challenge3 = challenge3;
         this.challenge4 = challenge4;
         this.challenge5 = challenge5;
         this.arrayUtil = arrayUtil;
-        this.fileUtil = fileUtil;
     }
 
     public byte[][] breakRepeatingKeyXOR(byte[] base64Xored) {
         byte[] xored = this.decodeBase64(base64Xored);
-        PriorityQueue<KeyDistance> queue = findBestGuesses(xored,
+        PriorityQueue<KeyDistance> bestGuesses = findBestGuesses(xored,
                 MIN_KEY_LENGTH, MAX_KEY_LENGTH);
 
-        byte[][] decrypted = new byte[BEST_GUESSES_TO_CHECK][xored.length];
-        for (int i = 0; i < BEST_GUESSES_TO_CHECK; i++) {
-            KeyDistance keyDistance = queue.poll();
+        byte[][] decrypted = new byte[bestGuesses.size()][xored.length];
+        for (int i = 0; i < bestGuesses.size(); i++) {
+            KeyDistance keyDistance = bestGuesses.poll();
             int keySize = keyDistance.getKeySize();
 
             byte[][] xoredSplit = arrayUtil.splitIntoBlocks(xored, keySize);
@@ -43,14 +40,24 @@ public class Challenge6 {
             XORComparison[] comparisons = challenge4.getAllBestSingleCharacterXOR
                     (transposedXoredSplit);
 
-            byte[] key = new byte[comparisons.length];
-            for (int j = 0; j < comparisons.length; j++)
-                key[j] = (byte) comparisons[j].getCharacter();
+            byte[] key = XORComparison.buildKey(comparisons);
 
             decrypted[i] = challenge5.repeatingKeyXOR(xored, key);
         }
 
+        sortByEnglishRessemblance(decrypted);
+
         return decrypted;
+    }
+
+    private void sortByEnglishRessemblance(byte[][] decrypted) {
+        Arrays.sort(decrypted, (o1, o2) -> {
+            byte[] o1Copy = Arrays.copyOf(o1, o1.length);
+            byte[] o2Copy = Arrays.copyOf(o2, o2.length);
+
+            return (int) ((challenge3.calculateEnglishResemblanceFactor(o2Copy) -
+                    challenge3.calculateEnglishResemblanceFactor(o1Copy)) * 100_000);
+        });
     }
 
     public PriorityQueue<KeyDistance> findBestGuesses(byte[] bytes,
@@ -102,9 +109,5 @@ public class Challenge6 {
         }
 
         return distance;
-    }
-
-    public byte[] getFileContents(String fileName) {
-        return fileUtil.getResource(fileName);
     }
 }
