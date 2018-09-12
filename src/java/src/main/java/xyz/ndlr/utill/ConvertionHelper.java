@@ -19,6 +19,10 @@ public class ConvertionHelper {
         return DatatypeConverter.parseHexBinary(hexadecimalString);
     }
 
+    public byte[] hexBytesToBytes(byte[] hex) {
+        return this.hexToBytes(this.bytesToHex(hex));
+    }
+
     public String bytesToHex(byte[] characters) {
         return DatatypeConverter.printHexBinary(characters);
     }

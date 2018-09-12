@@ -24,8 +24,7 @@ public class Challenge6 {
         this.arrayUtil = arrayUtil;
     }
 
-    public byte[][] breakRepeatingKeyXOR(byte[] base64Xored) {
-        byte[] xored = this.decodeBase64(base64Xored);
+    public byte[][] breakRepeatingKeyXOR(byte[] xored) {
         PriorityQueue<KeyDistance> bestGuesses = findBestGuesses(xored,
                 MIN_KEY_LENGTH, MAX_KEY_LENGTH);
 
