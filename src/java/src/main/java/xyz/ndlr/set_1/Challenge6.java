@@ -65,7 +65,12 @@ public class Challenge6 {
                                                       int maxKeyLength) {
         PriorityQueue<KeyDistance> bestGuesses = new PriorityQueue<>(KeyDistance::compareTo);
 
-        for (int keySize = minKeyLength; keySize <= maxKeyLength; keySize++) {
+
+        int actualMaxKeyLength = maxKeyLength < (bytes.length / 4)
+                ? maxKeyLength
+                : (bytes.length / 4);
+
+        for (int keySize = minKeyLength; keySize <= actualMaxKeyLength; keySize++) {
             byte[] first = Arrays.copyOfRange(bytes, 0, keySize);
             byte[] second = Arrays.copyOfRange(bytes, keySize, keySize * 2);
             byte[] third = Arrays.copyOfRange(bytes, keySize * 2, keySize * 3);
