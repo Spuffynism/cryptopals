@@ -1,6 +1,7 @@
 package xyz.ndlr.utill;
 
 import javax.xml.bind.DatatypeConverter;
+import java.util.Arrays;
 
 public class ConvertionHelper {
     /**
@@ -19,16 +20,12 @@ public class ConvertionHelper {
         return DatatypeConverter.parseHexBinary(hexadecimalString);
     }
 
-    public byte[] hexBytesToBytes(byte[] hex) {
-        return this.hexToBytes(this.bytesToHex(hex));
+    public String bytesToHex(byte[] bytes) {
+        return DatatypeConverter.printHexBinary(bytes);
     }
 
-    public String bytesToHex(byte[] characters) {
-        return DatatypeConverter.printHexBinary(characters);
-    }
-
-    public String bytesToString(byte[] characters) {
-        return new String(characters);
+    public String bytesToString(byte[] bytes) {
+        return new String(bytes);
     }
 
     public byte[] stringToBytes(String string) {

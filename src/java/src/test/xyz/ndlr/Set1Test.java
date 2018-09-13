@@ -7,20 +7,29 @@ import xyz.ndlr.set_1.*;
 import xyz.ndlr.utill.ConvertionHelper;
 import xyz.ndlr.utill.FileUtil;
 
-import java.util.Arrays;
+import javax.crypto.BadPaddingException;
+import javax.crypto.IllegalBlockSizeException;
+import javax.crypto.NoSuchPaddingException;
+import java.security.InvalidKeyException;
+import java.security.NoSuchAlgorithmException;
 import java.util.Base64;
 import java.util.PriorityQueue;
-import java.util.stream.Stream;
 
 public class Set1Test {
 
     private ConvertionHelper convertionHelper;
     private ChallengeFactory challengeFactory;
+    private Base64.Decoder base64Decoder;
+    private Base64.Encoder base64Encoder;
+    private FileUtil fileUtil;
 
     @Before
     public void before() {
         convertionHelper = new ConvertionHelper();
         challengeFactory = new ChallengeFactory();
+        fileUtil = new FileUtil(new ConvertionHelper());
+        base64Decoder = Base64.getDecoder();
+        base64Encoder = Base64.getEncoder();
     }
 
 
@@ -193,22 +202,47 @@ public class Set1Test {
     @Test
     public void challenge6() {
         Challenge6 challenge6 = challengeFactory.getChallenge6();
-        FileUtil fileUtil = new FileUtil(new ConvertionHelper());
 
-        byte[] solution = fileUtil.getResource("challenge_data/6_solution.txt");
-        byte[] base64Xored = fileUtil.getResource("challenge_data/6.txt");
+        byte[] solution = fileUtil.getSolution("6.txt", FileUtil.Encoding.BASE64);
+        byte[] xored = fileUtil.getChallengeData("6.txt", FileUtil.Encoding.BASE64);
 
-        byte[][] guesses = challenge6.breakRepeatingKeyXOR(base64Xored);
+        byte[][] guesses = challenge6.breakRepeatingKeyXOR(xored);
 
-        Base64.Decoder decoder = Base64.getDecoder();
-        byte[] decodedSolution = decoder.decode(solution);
-
-        Assert.assertArrayEquals(decodedSolution, guesses[0]);
+        Assert.assertArrayEquals(solution, guesses[0]);
     }
 
     @Test
     public void challenge7() {
+        Challenge7 challenge7 = challengeFactory.getChallenge7();
+
+        byte[] encryptedMessage =
+                fileUtil.getChallengeData("7.txt", FileUtil.Encoding.BASE64);
+        byte[] expectedSolution =
+                fileUtil.getSolution("7.txt", FileUtil.Encoding.BASE64);
+
         String key = "YELLOW SUBMARINE";
-        Assert.assertTrue(false);
+        byte[] keyBytes = convertionHelper.stringToBytes(key);
+
+        try {
+            byte[] result = challenge7.decryptAESinECBMode(encryptedMessage, keyBytes);
+
+            Assert.assertArrayEquals(expectedSolution, result);
+        } catch (NoSuchPaddingException | NoSuchAlgorithmException | BadPaddingException |
+                InvalidKeyException | IllegalBlockSizeException e) {
+            e.printStackTrace();
+            Assert.fail(e.getMessage());
+        }
+    }
+
+    @Test
+    public void challenge8() {
+        Challenge8 challenge8 = challengeFactory.getChallenge8();
+
+        byte[][] hexMessage = fileUtil.getFileContents("challenge_data/8.txt");
+        byte[] expectedHexBlock = fileUtil.getFileContents("challenge_data/solutions/8.txt")[0];
+
+        byte[] foundBlock = challenge8.detectAESinECBMode(hexMessage);
+
+        Assert.assertArrayEquals(expectedHexBlock, foundBlock);
     }
 }

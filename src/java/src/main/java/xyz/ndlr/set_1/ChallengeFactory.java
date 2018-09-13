@@ -44,4 +44,8 @@ public class ChallengeFactory {
     public Challenge7 getChallenge7() {
         return new Challenge7();
     }
+
+    public Challenge8 getChallenge8() {
+        return new Challenge8(getArrayUtil());
+    }
 }

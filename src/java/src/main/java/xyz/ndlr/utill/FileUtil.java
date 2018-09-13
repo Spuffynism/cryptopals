@@ -2,15 +2,17 @@ package xyz.ndlr.utill;
 
 import java.io.File;
 import java.io.IOException;
+import java.util.ArrayList;
 import java.util.Base64;
+import java.util.List;
 import java.util.Scanner;
+import java.util.stream.Collectors;
 
 public class FileUtil {
     private final Base64.Decoder base64Decoder;
 
     public enum Encoding {
         BASE64,
-        HEX,
         TEXT
     }
 
@@ -28,9 +30,6 @@ public class FileUtil {
         switch (encoding) {
             case BASE64:
                 decodedResource = base64Decoder.decode(resource);
-                break;
-            case HEX:
-                decodedResource = convertionHelper.hexBytesToBytes(resource);
                 break;
             case TEXT:
             default:
@@ -57,6 +56,31 @@ public class FileUtil {
         }
 
         return convertionHelper.stringToBytes(builder.toString());
+    }
+
+    public byte[][] getFileContents(String fileName) {
+        List<String> lines = new ArrayList<>();
+
+        ClassLoader classLoader = getClass().getClassLoader();
+        File file = new File(classLoader.getResource(fileName).getFile());
+
+        try (Scanner scanner = new Scanner(file)) {
+            while (scanner.hasNextLine()) {
+                String line = scanner.nextLine();
+                lines.add(line);
+            }
+
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+
+        List<byte[]> byteLines = lines.stream()
+                .map(convertionHelper::hexToBytes)
+                .collect(Collectors.toList());
+
+        byte[][] bytesArray = new byte[lines.size()][byteLines.get(0).length];
+
+        return byteLines.toArray(bytesArray);
     }
 
     public byte[] getSolution(String fileName, Encoding encoding) {
