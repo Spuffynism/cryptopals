@@ -1,26 +1,8 @@
 package xyz.ndlr.set_1;
 
-import xyz.ndlr.utill.ArrayUtil;
-import xyz.ndlr.utill.ConvertionHelper;
+import xyz.ndlr.utill.AbstractChallengeFactory;
 
-public class ChallengeFactory {
-    private ArrayUtil arrayUtil;
-    private ConvertionHelper convertionHelper;
-
-    private ArrayUtil getArrayUtil() {
-        if (arrayUtil == null)
-            arrayUtil = new ArrayUtil();
-
-        return arrayUtil;
-    }
-
-    private ConvertionHelper getConvertionHelper() {
-        if (convertionHelper == null)
-            convertionHelper = new ConvertionHelper();
-
-        return convertionHelper;
-    }
-
+public class Set1ChallengeFactory extends AbstractChallengeFactory {
     public Challenge2 getChallenge2() {
         return new Challenge2();
     }

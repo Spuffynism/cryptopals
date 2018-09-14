@@ -18,7 +18,7 @@ import java.util.PriorityQueue;
 public class Set1Test {
 
     private ConvertionHelper convertionHelper;
-    private ChallengeFactory challengeFactory;
+    private Set1ChallengeFactory set1ChallengeFactory;
     private Base64.Decoder base64Decoder;
     private Base64.Encoder base64Encoder;
     private FileUtil fileUtil;
@@ -26,7 +26,7 @@ public class Set1Test {
     @Before
     public void before() {
         convertionHelper = new ConvertionHelper();
-        challengeFactory = new ChallengeFactory();
+        set1ChallengeFactory = new Set1ChallengeFactory();
         fileUtil = new FileUtil(new ConvertionHelper());
         base64Decoder = Base64.getDecoder();
         base64Encoder = Base64.getEncoder();
@@ -110,7 +110,7 @@ public class Set1Test {
 
     @Test
     public void challenge6ComputeHammingDistance() {
-        Challenge6 challenge6 = challengeFactory.getChallenge6();
+        Challenge6 challenge6 = set1ChallengeFactory.getChallenge6();
 
         int expectedDistance = 37;
         byte[] string1 = convertionHelper.stringToBytes("this is a test");
@@ -123,7 +123,7 @@ public class Set1Test {
 
     @Test
     public void challenge6FindBestGuessesEasy() {
-        Challenge6 challenge6 = challengeFactory.getChallenge6();
+        Challenge6 challenge6 = set1ChallengeFactory.getChallenge6();
 
         byte[] bytes = new byte[40 * 4];
         byte[] choices = new byte[]{0b111, 0b101};
@@ -147,8 +147,8 @@ public class Set1Test {
 
     @Test
     public void challenge6FindBestGuessesXored() {
-        Challenge5 challenge5 = challengeFactory.getChallenge5();
-        Challenge6 challenge6 = challengeFactory.getChallenge6();
+        Challenge5 challenge5 = set1ChallengeFactory.getChallenge5();
+        Challenge6 challenge6 = set1ChallengeFactory.getChallenge6();
 
         byte[] bytes = new byte[40 * 4];
         byte[] xor = new byte[]{0b111, 0b101, 0b101};
@@ -174,8 +174,8 @@ public class Set1Test {
 
     @Test
     public void challenge6FindBestGuessesXoredShort() {
-        Challenge5 challenge5 = challengeFactory.getChallenge5();
-        Challenge6 challenge6 = challengeFactory.getChallenge6();
+        Challenge5 challenge5 = set1ChallengeFactory.getChallenge5();
+        Challenge6 challenge6 = set1ChallengeFactory.getChallenge6();
 
         byte item = 0b111;
         byte xor = 0b101;
@@ -201,7 +201,7 @@ public class Set1Test {
 
     @Test
     public void challenge6() {
-        Challenge6 challenge6 = challengeFactory.getChallenge6();
+        Challenge6 challenge6 = set1ChallengeFactory.getChallenge6();
 
         byte[] solution = fileUtil.getSolution("6.txt", FileUtil.Encoding.BASE64);
         byte[] xored = fileUtil.getChallengeData("6.txt", FileUtil.Encoding.BASE64);
@@ -213,7 +213,7 @@ public class Set1Test {
 
     @Test
     public void challenge7() {
-        Challenge7 challenge7 = challengeFactory.getChallenge7();
+        Challenge7 challenge7 = set1ChallengeFactory.getChallenge7();
 
         byte[] encryptedMessage =
                 fileUtil.getChallengeData("7.txt", FileUtil.Encoding.BASE64);
@@ -236,13 +236,13 @@ public class Set1Test {
 
     @Test
     public void challenge8() {
-        Challenge8 challenge8 = challengeFactory.getChallenge8();
+        Challenge8 challenge8 = set1ChallengeFactory.getChallenge8();
 
         byte[][] hexMessage = fileUtil.getFileContents("challenge_data/8.txt");
         byte[] expectedHexBlock = fileUtil.getFileContents("challenge_data/solutions/8.txt")[0];
 
         byte[] foundBlock = challenge8.detectAESinECBMode(hexMessage);
-
+        
         Assert.assertArrayEquals(expectedHexBlock, foundBlock);
     }
 }
