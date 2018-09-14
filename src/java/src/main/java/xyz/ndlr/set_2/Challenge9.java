@@ -4,11 +4,11 @@ import xyz.ndlr.utill.ConvertionHelper;
 
 import java.util.Arrays;
 
-public class Challenge1 {
+public class Challenge9 {
 
     private final ConvertionHelper convertionHelper;
 
-    public Challenge1(ConvertionHelper convertionHelper) {
+    public Challenge9(ConvertionHelper convertionHelper) {
         this.convertionHelper = convertionHelper;
     }
 
