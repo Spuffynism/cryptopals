@@ -39,22 +39,27 @@ public class Challenge9 {
             byte[] currentPaddingByte =
                     Arrays.copyOf(paddingBytePrefix, paddingBytesLength);
 
-            String padding = Integer.toHexString(length);
-            if (padding.length() == 1) {
-                currentPaddingByte[2] = (byte) '0';
-                currentPaddingByte[3] = (byte) padding.charAt(0);
+            addPaddingSizeBytes(currentPaddingByte, length);
 
-            } else {
-                currentPaddingByte[2] = (byte) padding.charAt(0);
-                currentPaddingByte[3] = (byte) padding.charAt(1);
-            }
-
-            for (int j = i * paddingBytesLength; j < (i * paddingBytesLength) +
+            int paddingStartPosition = i * paddingBytesLength;
+            for (int j = paddingStartPosition; j < paddingStartPosition +
                     paddingBytesLength; j++) {
                 paddingBytes[j] = currentPaddingByte[j % paddingBytesLength];
             }
         }
 
         return paddingBytes;
+    }
+
+    private void addPaddingSizeBytes(byte[] currentPaddingByte, int length) {
+        String padding = Integer.toHexString(length);
+        if (padding.length() == 1) {
+            currentPaddingByte[2] = (byte) '0';
+            currentPaddingByte[3] = (byte) padding.charAt(0);
+
+        } else {
+            currentPaddingByte[2] = (byte) padding.charAt(0);
+            currentPaddingByte[3] = (byte) padding.charAt(1);
+        }
     }
 }

@@ -18,7 +18,7 @@ public class Set2Test {
     }
 
     @Test
-    public void challenge1() {
+    public void challenge9() {
         Challenge9 challenge9 = challengeFactory.getChallenge9();
         String input = "YELLOW SUBMARINE";
         String expected = "YELLOW SUBMARINE\\x04\\x04\\x04\\x04";
