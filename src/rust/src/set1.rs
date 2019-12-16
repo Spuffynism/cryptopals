@@ -6,6 +6,8 @@ use std::str;
 
 use rustc_serialize::base64::{STANDARD, ToBase64};
 
+use xor;
+
 static ALPHABET: [char; 68] = [
     '0', '1', '2', '3', '4', '5', '6', '7', '8', '9',
     'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm',
@@ -29,13 +31,7 @@ pub fn hex_fixed_xor(hex_input: Vec<u8>, hex_key: Vec<u8>) -> Vec<u8> {
     let input: Vec<u8> = hex_to_bytes(hex_input);
     let key: Vec<u8> = hex_to_bytes(hex_key);
 
-    let mut result: Vec<u8> = Vec::with_capacity(input.len());
-
-    for (i, item) in input.iter().enumerate() {
-        result.push(item ^ key[i]);
-    }
-
-    return result;
+    return xor::fixed_xor(input, key);
 }
 
 pub fn find_single_byte_xor(hex_input: Vec<u8>) -> (char, f32, Vec<u8>) {
@@ -45,9 +41,9 @@ pub fn find_single_byte_xor(hex_input: Vec<u8>) -> (char, f32, Vec<u8>) {
     let mut best_result: Vec<u8> = vec![];
 
     for character in ALPHABET.iter() {
-        let result: Vec<u8> = single_byte_xor(&input, *character as u32);
+        let result: Vec<u8> = xor::single_byte_xor(&input, (*character as u32) as u8);
 
-        let score = human_resemblance_score(&result);
+        let score = calculate_human_resemblance_score(&result);
 
         if score > best_score {
             best_key = *character;
@@ -63,17 +59,7 @@ pub fn find_single_byte_xor(hex_input: Vec<u8>) -> (char, f32, Vec<u8>) {
     return (best_key, best_score, best_result);
 }
 
-pub fn single_byte_xor(input: &Vec<u8>, key: u32) -> Vec<u8> {
-    let mut result: Vec<u8> = Vec::with_capacity(input.len());
-
-    for item in input.iter() {
-        result.push(((*item as u32) ^ key) as u8);
-    }
-
-    return result;
-}
-
-fn human_resemblance_score(input: &Vec<u8>) -> f32 {
+fn calculate_human_resemblance_score(input: &Vec<u8>) -> f32 {
     let mut human_characters_count = 0;
 
     for letter in input.iter() {
@@ -155,5 +141,16 @@ mod tests {
         let (key, score, xored_result, candidate) = find_most_human(lines);
 
         assert_eq!(candidate, expected);
+    }
+
+    #[test]
+    fn challenge5() {
+        let content =
+            vs!("Burning 'em, if you ain't quick and nimble\nI go crazy when I hear a cymbal");
+        let key = vs!("ICE");
+        let expected = vs!(
+            "0b3637272a2b2e63622c2e69692a23693a2a3c6324202d623d63343c2a26226324272765272a282b2f20430a652e2c652a3124333a653e2b2027630c692b20283165286326302e27282f");
+
+        assert_eq!(xor::fixed_key_xor(content, key), hex_to_bytes(expected));
     }
 }
