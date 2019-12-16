@@ -1,6 +1,7 @@
 extern crate hex;
 
 use std::char;
+use std::fs;
 use std::str;
 
 use rustc_serialize::base64::{STANDARD, ToBase64};
@@ -44,7 +45,7 @@ pub fn find_single_byte_xor(hex_input: Vec<u8>) -> (char, f32, Vec<u8>) {
     let mut best_result: Vec<u8> = vec![];
 
     for character in ALPHABET.iter() {
-        let result: Vec<u8> = single_byte_xor(&input,*character as u32);
+        let result: Vec<u8> = single_byte_xor(&input, *character as u32);
 
         let score = human_resemblance_score(&result);
 
@@ -84,6 +85,26 @@ fn human_resemblance_score(input: &Vec<u8>) -> f32 {
     return human_characters_count as f32 / input.len() as f32;
 }
 
+fn find_most_human(candidates: Vec<Vec<u8>>) -> (char, f32, Vec<u8>, Vec<u8>) {
+    let mut best_key: char = 'a';
+    let mut best_score: f32 = -1_f32;
+    let mut best_result: Vec<u8> = vec![];
+    let mut best_candidate: Vec<u8> = vec![];
+
+    for candidate in candidates {
+        let (character, score, xored) = find_single_byte_xor(candidate.clone());
+
+        if score > best_score {
+            best_key = character;
+            best_score = score;
+            best_result = xored.clone();
+            best_candidate = candidate.clone();
+        }
+    }
+
+    return (best_key, best_score, best_result, best_candidate);
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -120,5 +141,19 @@ mod tests {
         let (key, score, xored_result) = find_single_byte_xor(input);
 
         assert_eq!(xored_result, expected);
+    }
+
+    #[test]
+    fn challenge4() {
+        let content = fs::read_to_string("./resources/4.txt").expect("Can't read file.");
+        let lines = content
+            .split("\n")
+            .map(|line| vs!(line))
+            .collect::<Vec<Vec<u8>>>();
+        let expected = vs!("7b5a4215415d544115415d5015455447414c155c46155f4058455c5b523f");
+
+        let (key, score, xored_result, candidate) = find_most_human(lines);
+
+        assert_eq!(candidate, expected);
     }
 }
