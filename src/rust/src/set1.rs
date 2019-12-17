@@ -91,6 +91,48 @@ fn find_most_human(candidates: Vec<Vec<u8>>) -> (char, f32, Vec<u8>, Vec<u8>) {
     return (best_key, best_score, best_result, best_candidate);
 }
 
+fn break_repeating_key_xor(cipher: Vec<u8>,
+                           key_alphabet: Vec<u8>,
+                           min_key_length: u8,
+                           max_key_length: u8,
+                           max_blocks_average: u8,
+                           best_guesses_count: u8) -> (Vec<u8>, Vec<u8>) {
+    let mut key: Vec<u8> = vec![];
+    let mut deciphered: Vec<u8> = vec![];
+
+    return (key, deciphered);
+}
+
+fn hamming_distance_of_bits(from: Vec<u8>, to: Vec<u8>) -> u32 {
+    assert_eq!(from.len(), to.len());
+    let mut distance: u32 = 0;
+
+    for (i, character) in from.iter().enumerate() {
+        distance += bits_difference_count(*character, to[i]) as u32;
+    }
+
+    return distance;
+}
+
+fn bits_difference_count(from: u8, to: u8) -> u8 {
+    let mut distance: u8 = 0;
+    let mut i = from ^ to;
+
+    loop {
+        if i <= 0 {
+            break;
+        }
+
+        if i & 1 == 1 {
+            distance += 1;
+        }
+
+        i >>= 1;
+    }
+
+    return distance;
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -152,5 +194,31 @@ mod tests {
             "0b3637272a2b2e63622c2e69692a23693a2a3c6324202d623d63343c2a26226324272765272a282b2f20430a652e2c652a3124333a653e2b2027630c692b20283165286326302e27282f");
 
         assert_eq!(xor::fixed_key_xor(content, key), hex_to_bytes(expected));
+    }
+
+    #[test]
+    fn hamming_distance_test() {
+        let test_cases = vec![
+            // wikipedia examples
+            ("karolin", "kathrin", 9),
+            ("karolin", "kerstin", 6),
+            ("1011101", "1001001", 2),
+            ("2173896", "2233796", 7),
+            // cryptopals test case
+            ("this is a test", "wokka wokka!!!", 37)
+        ];
+
+        for (from, to, expected_distance) in test_cases {
+            assert_eq!(hamming_distance_of_bits(vs!(from), vs!(to)), expected_distance);
+        }
+    }
+
+    #[test]
+    fn challenge6() {
+        let content = fs::read_to_string("./resources/6.txt").expect("Can't read file.");
+        let lines = content
+            .split("\n")
+            .map(|line| base64::decode(line).unwrap())
+            .collect::<Vec<Vec<u8>>>();
     }
 }
