@@ -95,13 +95,7 @@ fn find_most_human(candidates: Vec<Vec<u8>>) -> (char, f32, Vec<u8>, Vec<u8>) {
     return (best_key, best_score, best_result, best_candidate);
 }
 
-fn break_repeating_key_xor(cipher: &Vec<u8>,
-                           key_alphabet: Vec<u8>, // TODO: Make use of this
-                           min_key_size: i32,
-                           max_key_size: i32,
-                           max_blocks_average: u8,  // TODO: Make use of this
-                           best_guesses_count: u8,  // TODO: Make use of this
-) -> (Vec<u8>, Vec<u8>) {
+fn break_repeating_key_xor(cipher: &Vec<u8>, min_key_size: i32, max_key_size: i32) -> (Vec<u8>, Vec<u8>) {
     let mut key: Vec<u8> = vec![];
     let mut best_key_size = 0;
     let mut best_normalized_hamming_distance = std::f32::MAX;
@@ -308,8 +302,7 @@ mod tests {
             .iter()
             .fold(Vec::new(), |acc, line| [acc.as_slice(), line.as_slice()].concat());
 
-        let (key, deciphered) = break_repeating_key_xor(decoded_content, vec![], 2, 40,
-                                                        4, 3);
+        let (key, deciphered) = break_repeating_key_xor(decoded_content, 2, 40);
 
         println!("{:?}", String::from_utf8(key));
         println!("{:?}", String::from_utf8(deciphered));
