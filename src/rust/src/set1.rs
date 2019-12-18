@@ -9,13 +9,13 @@ use rustc_serialize::base64::{STANDARD, ToBase64};
 
 use xor;
 
-static ALPHABET: [char; 72] = [
+static ALPHABET: [char; 74] = [
     '0', '1', '2', '3', '4', '5', '6', '7', '8', '9',
     'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm',
     'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z',
     'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M',
     'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z',
-    ',', ';', ':', '.', ' ', '\'', '\n', '\\', '/', '"',
+    ',', ';', ':', '.', ' ', '\'', '\n', '\\', '/', '"', '\r', '-',
 ];
 
 pub fn hex_string_to_bytes(hex_input: &str) -> Vec<u8> {
@@ -97,32 +97,42 @@ fn find_most_human(candidates: Vec<Vec<u8>>) -> (char, f32, Vec<u8>, Vec<u8>) {
 
 fn break_repeating_key_xor(cipher: &Vec<u8>,
                            key_alphabet: Vec<u8>, // TODO: Make use of this
-                           min_key_size: u8,
-                           max_key_size: u8,
+                           min_key_size: i32,
+                           max_key_size: i32,
                            max_blocks_average: u8,  // TODO: Make use of this
-                           best_guesses_count: u8  // TODO: Make use of this
-    ) -> (Vec<u8>, Vec<u8>) {
+                           best_guesses_count: u8,  // TODO: Make use of this
+) -> (Vec<u8>, Vec<u8>) {
     let mut key: Vec<u8> = vec![];
-    let mut best_key_size: u8 = 0;
+    let mut best_key_size = 0;
     let mut best_normalized_hamming_distance = std::f32::MAX;
 
-    for key_size in &[min_key_size, max_key_size] {
-        let mut first = cipher[..*key_size as usize].to_vec();
-        let mut second = cipher[(key_size + 1) as usize..(key_size * 2 + 1) as usize].to_vec();
+    for key_size in min_key_size..max_key_size {
+        let mut i: i32 = 0;
+        let mut normalized_hamming_distances: Vec<f32> = Vec::new();
 
-        while first.len() != second.len() {
-            if first.len() < second.len() {
-                first.push(0);
-            } else {
-                second.push(0);
+        loop {
+            let mut first: Vec<u8> = cipher[i as usize..(i + key_size) as usize].to_vec();
+            let mut second: Vec<u8> = cipher[(i + key_size) as usize..(i + (key_size * 2)) as
+                usize].to_vec();
+
+            normalized_hamming_distances.push(
+                normalized_hamming_distance_in_bits(&first.to_vec(), &second.to_vec()));
+
+            i += key_size * 2;
+
+            if (i + key_size * 2) as usize >= cipher.len() {
+                break;
             }
         }
 
-        let normalized_hamming_distance = normalized_hamming_distance_in_bits(&first.to_vec(),
-                                                                              &second.to_vec());
+        let normalized_hamming_distance_sum: f32 = normalized_hamming_distances
+            .iter()
+            .fold(0f32, |acc, v| acc + *v);
+        let normalized_hamming_distance = normalized_hamming_distance_sum /
+            normalized_hamming_distances.len() as f32;
 
         if normalized_hamming_distance < best_normalized_hamming_distance {
-            best_key_size = *key_size;
+            best_key_size = key_size;
             best_normalized_hamming_distance = normalized_hamming_distance;
         }
     }
@@ -134,17 +144,14 @@ fn break_repeating_key_xor(cipher: &Vec<u8>,
 
     let rows_length = (cipher.len() as f32 / best_key_size as f32).ceil() as i32;
 
-    // [1,2,3, 4,5,6, 7,8,9]
-    let mut i = 0;
-    while i < rows_length {
-        for j in 0..best_key_size {
-            if (i * rows_length + j as i32) as usize >= cipher.len() {
+    for j in 0..best_key_size {
+        for i in 0..rows_length {
+            if (i * best_key_size + j as i32) as usize >= cipher.len() {
                 break;
             }
 
-            rows[j as usize].push(cipher[(i * rows_length + j as i32) as usize]);
+            rows[j as usize].push(cipher[(i * best_key_size + j as i32) as usize]);
         }
-        i += 1;
     }
 
     let mut key = Vec::with_capacity(rows.len());
@@ -198,8 +205,8 @@ mod tests {
 
     // Converts a string to a vector of its bytes
     macro_rules! vs {
-        ($x:expr) => ($x.as_bytes().to_vec());
-    }
+( $ x: expr) => ( $ x.as_bytes().to_vec());
+}
 
     #[test]
     fn challenge1() {
@@ -249,8 +256,7 @@ mod tests {
         let content =
             &vs!("Burning 'em, if you ain't quick and nimble\nI go crazy when I hear a cymbal");
         let key = &vs!("ICE");
-        let expected = &vs!(
-            "0b3637272a2b2e63622c2e69692a23693a2a3c6324202d623d63343c2a26226324272765272a282b2f20430a652e2c652a3124333a653e2b2027630c692b20283165286326302e27282f");
+        let expected = &vs!("0b3637272a2b2e63622c2e69692a23693a2a3c6324202d623d63343c2a26226324272765272a282b2f20430a652e2c652a3124333a653e2b2027630c692b20283165286326302e27282f");
 
         assert_eq!(xor::fixed_key_xor(content, key), hex_to_bytes(expected));
     }
@@ -273,6 +279,26 @@ mod tests {
     }
 
     #[test]
+    fn normalized_hamming_distance_test() {
+        let test_cases = vec![
+            // wikipedia examples
+            ("karolin", "kathrin", 9),
+            ("karolin", "kerstin", 6),
+            ("1011101", "1001001", 2),
+            ("2173896", "2233796", 7),
+            // cryptopals test case
+            ("this is a test", "wokka wokka!!!", 37)
+        ];
+
+        for (from, to, expected_hamming_distance) in test_cases {
+            let expected_normalized_hamming_distance =
+                expected_hamming_distance as f32 / to.len() as f32;
+            assert_eq!(normalized_hamming_distance_in_bits(&vs!(from), &vs!(to)),
+                       expected_normalized_hamming_distance);
+        }
+    }
+
+    #[test]
     fn challenge6() {
         let content = fs::read_to_string("./resources/6.txt").expect("Can't read file.");
         let decoded_content: &Vec<u8> = &content
@@ -282,7 +308,7 @@ mod tests {
             .iter()
             .fold(Vec::new(), |acc, line| [acc.as_slice(), line.as_slice()].concat());
 
-        let (key, deciphered) = break_repeating_key_xor(decoded_content, vec![], 2, 50,
+        let (key, deciphered) = break_repeating_key_xor(decoded_content, vec![], 2, 40,
                                                         4, 3);
 
         println!("{:?}", String::from_utf8(key));
