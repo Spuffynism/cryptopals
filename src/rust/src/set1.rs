@@ -1,13 +1,15 @@
 extern crate hex;
 
 use std::char;
-use std::fs;
 use std::str;
 use std::f32;
 
 use rustc_serialize::base64::{STANDARD, ToBase64};
 
+use ::vs;
 use xor;
+use file_util;
+use aes;
 
 static ALPHABET: [char; 74] = [
     '0', '1', '2', '3', '4', '5', '6', '7', '8', '9',
@@ -196,11 +198,7 @@ fn bits_difference_count(from: u8, to: u8) -> u8 {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    // Converts a string to a vector of its bytes
-    macro_rules! vs {
-( $ x: expr) => ( $ x.as_bytes().to_vec());
-}
+    use aes::decrypt_in_ecb_mode;
 
     #[test]
     fn challenge1() {
@@ -233,11 +231,7 @@ mod tests {
 
     #[test]
     fn challenge4() {
-        let content = fs::read_to_string("./resources/4.txt").expect("Can't read file.");
-        let lines = content
-            .split("\n")
-            .map(|line| vs!(line))
-            .collect::<Vec<Vec<u8>>>();
+        let lines = file_util::read_hex_file_lines("./resources/4.txt");
         let expected = vs!("7b5a4215415d544115415d5015455447414c155c46155f4058455c5b523f");
 
         let (key, score, xored_result, candidate) = find_most_human(lines);
@@ -294,17 +288,21 @@ mod tests {
 
     #[test]
     fn challenge6() {
-        let content = fs::read_to_string("./resources/6.txt").expect("Can't read file.");
-        let decoded_content: &Vec<u8> = &content
-            .split("\n")
-            .map(|line| base64::decode(line).unwrap())
-            .collect::<Vec<Vec<u8>>>()
-            .iter()
-            .fold(Vec::new(), |acc, line| [acc.as_slice(), line.as_slice()].concat());
+        let cipher = &file_util::read_base64_file_bytes("./resources/6.txt");
 
-        let (key, deciphered) = break_repeating_key_xor(decoded_content, 2, 40);
+        let (key, deciphered) = break_repeating_key_xor(cipher, 2, 40);
 
         println!("{:?}", String::from_utf8(key));
+        println!("{:?}", String::from_utf8(deciphered));
+    }
+
+    #[test]
+    fn challenge7() {
+        let cipher = &file_util::read_base64_file_bytes("./resources/7.txt");
+        let key = &vs!("YELLOW SUBMARINE");
+
+        let deciphered = aes::decrypt_in_ecb_mode(cipher, key);
+
         println!("{:?}", String::from_utf8(deciphered));
     }
 }
