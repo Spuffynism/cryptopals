@@ -198,7 +198,6 @@ fn bits_difference_count(from: u8, to: u8) -> u8 {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use aes::decrypt_in_ecb_mode;
 
     #[test]
     fn challenge1() {
@@ -301,8 +300,8 @@ mod tests {
         let cipher = &file_util::read_base64_file_bytes("./resources/7.txt");
         let key = &vs!("YELLOW SUBMARINE");
 
-        let deciphered = aes::decrypt_in_ecb_mode(cipher, key);
+        let deciphered = aes::decrypt_aes_128_in_ecb_mode(cipher.as_slice(), key);
 
-        println!("{:?}", String::from_utf8(deciphered));
+        println!("{:?}", String::from_utf8(deciphered.to_vec()));
     }
 }
