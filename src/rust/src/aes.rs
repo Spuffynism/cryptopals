@@ -69,36 +69,60 @@ pub fn decrypt_aes_128_in_ecb_mode(cipher: &[u8], key: &[u8]) -> Vec<u8> {
     let mut decrypted_blocks: Vec<Vec<u8>> = Vec::with_capacity(blocks.len());
 
     for block in blocks.into_iter() {
-        let mut state: Vec<Vec<u8>> = vec![
-            vec![block[0], block[1], block[2], block[3]],
-            vec![block[4], block[5], block[6], block[7]],
-            vec![block[8], block[9], block[10], block[11]],
-            vec![block[12], block[13], block[14], block[15]]
-        ];
+        let mut state: Vec<Vec<u8>> = vec![vec![0; 4]; 4];
 
+        for r in 0..4 {
+            for c in 0..Nb {
+                state[c][r] = block[r + 4 * c];
+            }
+        }
+
+        print_simple_as_string("round[0].iinput", &block.to_vec());
         // removed - 1 to (Nr + 1) * Nb - 1 cause indexes are exclusive in rust
-        state = add_round_key(&state, &w[Nr * Nb..(Nr + 1) * Nb].to_vec());
+        print_as_string("round[0].ik_sch", &w[Nr * Nb..(Nr + 1) * Nb].to_vec());
+        state = add_round_key(&state.clone(), &w[Nr * Nb..(Nr + 1) * Nb].to_vec());
 
-        for round in (0..Nr - 1).rev() {
+        for round in (1..Nr).rev() {
+            print_as_string(format!("round[{}].istart", 10 - round).as_str(), &state);
             state = inv_shift_rows(state.clone());
+            print_as_string(format!("round[{}].is_row", 10 - round).as_str(), &state);
             state = inv_sub_bytes(state.clone());
+            print_as_string(format!("round[{}].is_box", 10 - round).as_str(), &state);
+            print_as_string(format!("round[{}].ik_sch", 10 - round).as_str(), &w[round * Nb..(round +
+                1) * Nb].to_vec());
             // removed - 1 to (round + 1) * Nb -1 cause indexes are exclusive in rust
             state = add_round_key(&state.clone(), &w[round * Nb..(round + 1) * Nb].to_vec());
+            print_as_string(format!("round[{}].ik_add", 10 - round).as_str(), &state);
             state = inv_mix_columns(&state.clone());
         }
 
         state = inv_shift_rows(state);
+        print_as_string(format!("round[{}].is_row", 10).as_str(), &state);
         state = inv_sub_bytes(state);
+        print_as_string(format!("round[{}].is_box", 10).as_str(), &state);
+        print_as_string(format!("round[{}].ik_sch", 10).as_str(), &w[0..Nb].to_vec());
         state = add_round_key(&state, &w[0..Nb].to_vec());
 
-        let joined_state = state.iter()
-            .fold(Vec::new(), |acc, line| [acc.as_slice(), line.as_slice()].concat());
+        let mut out: Vec<u8> = vec![0; 16];
+        for r in 0..4 {
+            for c in 0..Nb {
+                out[r + 4 * c] = state[c][r];
+            }
+        }
 
-        decrypted_blocks.push(joined_state);
+        decrypted_blocks.push(out);
     }
 
     return decrypted_blocks.iter()
         .fold(Vec::new(), |acc, line| [acc.as_slice(), line.as_slice()].concat());
+}
+
+fn print_as_string(step: &str, bytes: &Vec<Vec<u8>>) {
+    println!("{}\t{:x?}", step, bytes);
+}
+
+fn print_simple_as_string(step: &str, bytes: &Vec<u8>) {
+    println!("{}\t{:x?}", step, bytes);
 }
 
 fn key_expansion(key: &[u8]) -> Vec<Vec<u8>> {
@@ -146,9 +170,9 @@ fn ecb_encrypt(cipher: &Vec<u8>, key: &Vec<u8>) -> Vec<u8> {
 /// Key length equals 128 bits/16 bytes).
 fn add_round_key(state: &Vec<Vec<u8>>, round_key: &Vec<Vec<u8>>) -> Vec<Vec<u8>> {
     let mut xored_state: Vec<Vec<u8>> = vec![vec![0; 4]; 4];
-    for (i, rows) in state.iter().enumerate() {
-        for (j, _) in rows.iter().enumerate() {
-            xored_state[i][j] = state[i][j] ^ round_key[j][i];
+    for r in 0..4 {
+        for c in 0..4 {
+            xored_state[r][c] = state[r][c] ^ round_key[r][c];
         }
     }
 
@@ -178,12 +202,11 @@ fn shift_rows() {}
 
 // Transformation in the Inverse Cipher that is the inverse of inv_shift_rows
 fn inv_shift_rows(state: Vec<Vec<u8>>) -> Vec<Vec<u8>> {
-    // TODO(nich): do this dynamically
     vec![
-        vec![state[0][0], state[0][1], state[0][2], state[0][3]],
-        vec![state[1][3], state[1][0], state[1][1], state[1][2]],
-        vec![state[2][2], state[2][3], state[2][0], state[2][1]],
-        vec![state[3][1], state[3][2], state[3][3], state[3][0]],
+        vec![state[0][0], state[3][1], state[2][2], state[1][3]],
+        vec![state[1][0], state[0][1], state[3][2], state[2][3]],
+        vec![state[2][0], state[1][1], state[0][2], state[3][3]],
+        vec![state[3][0], state[2][1], state[1][2], state[0][3]],
     ]
 }
 
@@ -208,23 +231,6 @@ fn inv_mix_columns(state: &Vec<Vec<u8>>) -> Vec<Vec<u8>> {
                 ^ multiply_in_g(fixed_polynomial[x][2], state[c][2])
                 ^ multiply_in_g(fixed_polynomial[x][3], state[c][3]);
         }
-
-        /*result[c][0] = multiply_in_g(0x0e, state[c][0])
-            ^ multiply_in_g(0x0b, state[c][1])
-            ^ multiply_in_g(0x0d, state[c][2])
-            ^ multiply_in_g(0x09, state[c][3]);
-        result[c][1] = multiply_in_g(0x09, state[c][0])
-            ^ multiply_in_g(0x0e, state[c][1])
-            ^ multiply_in_g(0x0b, state[c][2])
-            ^ multiply_in_g(0x0d, state[c][3]);
-        result[c][2] = multiply_in_g(0x0d, state[c][0])
-            ^ multiply_in_g(0x09, state[c][1])
-            ^ multiply_in_g(0x0e, state[c][2])
-            ^ multiply_in_g(0x0b, state[c][3]);
-        result[c][3] = multiply_in_g(0x0b, state[c][0])
-            ^ multiply_in_g(0x0d, state[c][1])
-            ^ multiply_in_g(0x09, state[c][2])
-            ^ multiply_in_g(0x0e, state[c][3]);*/
     }
 
     result
@@ -300,29 +306,28 @@ mod tests {
 
     #[test]
     fn add_round_key_test() {
+        let key_schedule = vec![
+            vec![0x13, 0x11, 0x1d, 0x7f],
+            vec![0xe3, 0x94, 0x4a, 0x17],
+            vec![0xf3, 0x07, 0xa7, 0x8b],
+            vec![0x4d, 0x2b, 0x30, 0xc5]
+        ];
         let state = vec![
-            vec![0b0000, 0b0001, 0b0010, 0b0011],
-            vec![0b0100, 0b0101, 0b0110, 0b0111],
-            vec![0b1000, 0b1001, 0b1010, 0b1011],
-            vec![0b1100, 0b1101, 0b1110, 0b1111],
+            vec![0x69, 0xc4, 0xe0, 0xd8],
+            vec![0x6a, 0x7b, 0x04, 0x30],
+            vec![0xd8, 0xcd, 0xb7, 0x80],
+            vec![0x70, 0xb4, 0xc5, 0x5a]
         ];
-        // random key
-        let round_key: Vec<Vec<u8>> = vec![
-            vec![0b0000, 0b0001, 0b0010, 0b0100],
-            vec![0b0001, 0b0010, 0b0100, 0b1000],
-            vec![0b0010, 0b0100, 0b1000, 0b0000],
-            vec![0b0100, 0b1000, 0b0000, 0b0001]
-        ];
-        let expected_state = vec![
-            vec![0b0000, 0b0000, 0b0000, 0b0111],
-            vec![0b0101, 0b0111, 0b0010, 0b1111],
-            vec![0b1010, 0b1101, 0b0010, 0b1011],
-            vec![0b1000, 0b0101, 0b1110, 0b1110],
+        let expected_state: Vec<Vec<u8>> = vec![
+            vec![0x7a, 0xd5, 0xfd, 0xa7],
+            vec![0x89, 0xef, 0x4e, 0x27],
+            vec![0x2b, 0xca, 0x10, 0x0b],
+            vec![0x3d, 0x9f, 0xf5, 0x9f]
         ];
 
-        let given_state = add_round_key(&state, &round_key);
+        let actual_state = add_round_key(&state, &key_schedule);
 
-        assert_eq!(given_state, expected_state);
+        assert_eq!(actual_state, expected_state);
     }
 
     #[test]
@@ -356,7 +361,6 @@ mod tests {
             let actual_state = inv_mix_columns(state);
             assert_eq!(actual_state, *expected_state);
         }
-
     }
 
     #[test]
@@ -374,6 +378,46 @@ mod tests {
             let actual_result = multiply_in_g(*a, *b);
             assert_eq!(actual_result, *expected);
         }
+    }
+
+    #[test]
+    fn inv_shift_rows_test() {
+        let state = vec![
+            vec![0x7a, 0xd5, 0xfd, 0xa7],
+            vec![0x89, 0xef, 0x4e, 0x27],
+            vec![0x2b, 0xca, 0x10, 0x0b],
+            vec![0x3d, 0x9f, 0xf5, 0x9f]
+        ];
+        let expected_state = vec![
+            vec![0x7a, 0x9f, 0x10, 0x27],
+            vec![0x89, 0xd5, 0xf5, 0x0b],
+            vec![0x2b, 0xef, 0xfd, 0x9f],
+            vec![0x3d, 0xca, 0x4e, 0xa7]
+        ];
+
+        let actual_state = inv_shift_rows(state);
+
+        assert_eq!(actual_state, expected_state);
+    }
+
+    #[test]
+    fn inv_sub_bytes_test() {
+        let state = vec![
+            vec![0x7a, 0x9f, 0x10, 0x27],
+            vec![0x89, 0xd5, 0xf5, 0x0b],
+            vec![0x2b, 0xef, 0xfd, 0x9f],
+            vec![0x3d, 0xca, 0x4e, 0xa7]
+        ];
+        let expected_state = vec![
+            vec![0xbd, 0x6e, 0x7c, 0x3d],
+            vec![0xf2, 0xb5, 0x77, 0x9e],
+            vec![0x0b, 0x61, 0x21, 0x6e],
+            vec![0x8b, 0x10, 0xb6, 0x89]
+        ];
+
+        let actual_state = inv_sub_bytes(state);
+
+        assert_eq!(actual_state, expected_state);
     }
 
     #[test]
@@ -439,6 +483,16 @@ mod tests {
         let given_key_schedule = key_expansion(key);
 
         assert_eq!(given_key_schedule.to_vec(), expected_key_schedule.to_vec());
+    }
+
+    #[test]
+    fn decrypt_test() {
+        let cipher = vec![0x69, 0xc4, 0xe0, 0xd8, 0x6a, 0x7b, 0x04, 0x30, 0xd8, 0xcd, 0xb7, 0x80,
+                          0x70, 0xb4, 0xc5, 0x5a];
+        let key = vec![0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0a, 0x0b,
+                       0x0c, 0x0d, 0x0e, 0x0f];
+        let result = decrypt_aes_128_in_ecb_mode(&cipher, &key);
+        println!("{:x?}", result);
     }
 
     #[test]
