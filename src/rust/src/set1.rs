@@ -98,7 +98,7 @@ fn find_most_human(candidates: Vec<Vec<u8>>) -> (char, f32, Vec<u8>, Vec<u8>) {
 }
 
 fn break_repeating_key_xor(cipher: &Vec<u8>, min_key_size: i32, max_key_size: i32) -> (Vec<u8>, Vec<u8>) {
-    let mut key: Vec<u8> = vec![];
+    let key: Vec<u8> = vec![];
     let mut best_key_size = 0;
     let mut best_normalized_hamming_distance = std::f32::MAX;
 
@@ -107,8 +107,8 @@ fn break_repeating_key_xor(cipher: &Vec<u8>, min_key_size: i32, max_key_size: i3
         let mut normalized_hamming_distances: Vec<f32> = Vec::new();
 
         loop {
-            let mut first: Vec<u8> = cipher[i as usize..(i + key_size) as usize].to_vec();
-            let mut second: Vec<u8> = cipher[(i + key_size) as usize..(i + (key_size * 2)) as
+            let first: Vec<u8> = cipher[i as usize..(i + key_size) as usize].to_vec();
+            let second: Vec<u8> = cipher[(i + key_size) as usize..(i + (key_size * 2)) as
                 usize].to_vec();
 
             normalized_hamming_distances.push(
@@ -156,7 +156,7 @@ fn break_repeating_key_xor(cipher: &Vec<u8>, min_key_size: i32, max_key_size: i3
         key.push(best_key as u8);
     }
 
-    let mut deciphered: Vec<u8> = xor::fixed_key_xor(&cipher, &key);
+    let deciphered: Vec<u8> = xor::fixed_key_xor(&cipher, &key);
 
     return (key, deciphered);
 }

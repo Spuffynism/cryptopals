@@ -1,4 +1,5 @@
 use xor;
+use std::borrow::Borrow;
 
 static AES_128_BLOCK_SIZE_IN_BYTES: i32 = 16;
 
@@ -46,10 +47,10 @@ pub fn decrypt_aes_128_in_ecb_mode<'a>(cipher: &[u8], key: &[u8]) -> &'a [u8] {
     let Nr = 10;
     let w = key_expansion(key);
     let blocks = cipher.windows(AES_128_BLOCK_SIZE_IN_BYTES as usize);
-    let mut decrypted_blocks: Vec<Vec<u8>> = Vec::with_capacity(blocks.len());
+    let decrypted_blocks: Vec<Vec<u8>> = Vec::with_capacity(blocks.len());
 
     for block in blocks {
-        let mut state: &[&[u8]] = &[
+        let state: &[&[u8]] = &[
             &[block[0], block[1], block[2], block[3]],
             &[block[4], block[5], block[6], block[7]],
             &[block[8], block[9], block[10], block[11]],
@@ -73,27 +74,32 @@ pub fn decrypt_aes_128_in_ecb_mode<'a>(cipher: &[u8], key: &[u8]) -> &'a [u8] {
     return &[];
 }
 
-fn key_expansion(key: &[u8]) -> &[&[u8]] {
+fn key_expansion(key: &[u8]) -> Vec<Vec<u8>> {
     let Nk = 4;
     let Nb = 4;
     let Nr = 10;
-    let w: &mut [&[u8]] = &mut [];
+    let mut w: Vec<Vec<u8>> = vec![vec![0; 4]; 44];
 
     for i in 0..Nk {
-        w[i] = &[key[4 * i], key[4 * i + 1], key[4 * i + 2], key[4 * i + 3]];
+        w[i] = [key[4 * i], key[4 * i + 1], key[4 * i + 2], key[4 * i + 3]].to_vec();
     }
 
+    let mut temp: Vec<u8> = Vec::new();
     for i in Nk..(Nb * (Nr + 1)) {
-        let mut temp = w[i - 1];
+        temp = w[i - 1].to_vec();
         if i % Nk == 0 {
-            temp = xor::fixed_key_xor_slice(sub_word(rot_word(temp)), &RCON[i / Nk]);
+            temp = xor::fixed_key_xor(&sub_word(&rot_word(temp.as_slice())), &RCON[(i / Nk) - 1]
+                .to_vec())
+                .to_vec();
         } else if Nk > 6 && i % Nk == 4 {
-            temp = sub_word(temp);
+            temp = sub_word(temp.as_slice());
         }
-        w[i] = xor::fixed_key_xor_slice(w[i - Nk], temp);
+        w[i] = xor::fixed_key_xor(&w[i - Nk], &temp).to_vec();
     }
 
-    w
+    w.iter()
+        .map(|v| v.to_vec())
+        .collect()
 }
 
 fn do_round() {
@@ -127,8 +133,8 @@ fn ecb_encrypt(cipher: &Vec<u8>, key: &Vec<u8>) -> Vec<u8> {
 /// Key is added to the State using an XOR operation. The length of a
 /// Round Key equals the size of the State (i.e., for Nb = 4, the Round
 /// Key length equals 128 bits/16 bytes).
-fn add_round_key<'a>(state: &[&[u8]], key: &[u8]) -> &'a mut [&'a mut [u8]] {
-    let mut xored_state: &mut [&mut [u8]] = &mut [&mut []];
+fn add_round_key(state: &[&[u8]], key: &[u8]) -> Vec<Vec<u8>> {
+    let mut xored_state: Vec<Vec<u8>> = vec![vec![0; 4]; 4];
     for (i, rows) in state.iter().enumerate() {
         for (j, _) in rows.iter().enumerate() {
             xored_state[i][j] = state[i][j] ^ key[i];
@@ -163,19 +169,20 @@ fn inv_mix_columns() {}
 
 /// Function used in the Key Expansion routine that takes a four-byte
 /// word and performs a cyclic permutation.
-fn rot_word(word: &[u8]) -> &[u8] {
+fn rot_word(word: &[u8]) -> Vec<u8> {
     assert_eq!(word.len(), 4);
 
-    &[word[1], word[2], word[3], word[0]]
+    [word[1], word[2], word[3], word[0]].to_vec()
 }
 
 /// Function used in the Key Expansion routine that takes a four-byte
 /// input word and applies an S-box to each of the four bytes to
 /// produce an output word.
-fn sub_word(word: &[u8]) -> &[u8] {
+fn sub_word(word: &[u8]) -> Vec<u8> {
     assert_eq!(word.len(), 4);
 
-    &[S_BOX[word[0] as usize], S_BOX[word[1] as usize], S_BOX[word[2] as usize], S_BOX[word[3] as usize]]
+    [S_BOX[word[0] as usize], S_BOX[word[1] as usize], S_BOX[word[2] as usize], S_BOX[word[3] as
+        usize]].to_vec()
 }
 
 fn multiplication_in_gf28(i: u8, j: u8) -> u8 {
@@ -186,7 +193,7 @@ fn multiplication_in_gf28(i: u8, j: u8) -> u8 {
 
 #[cfg(test)]
 mod tests {
-    use aes::{multiplication_in_gf28, rot_word};
+    use aes::{multiplication_in_gf28, rot_word, sub_word, add_round_key, key_expansion};
 
     /// (x) - Multiplication of two polynomials (each with degree < 4) modulo x^4 + 1
     #[test]
@@ -208,13 +215,106 @@ mod tests {
         let expected_word: &[u8] = &[1, 2, 3, 0];
 
         let given_word = rot_word(word);
-        assert_eq!(word, given_word);
+        assert_eq!(given_word.as_slice(), expected_word);
     }
 
     #[test]
-    fn repl() {
-        for round in 9..0 {
-            println!("{}", round);
-        }
+    fn sub_word_test() {
+        let word: &[u8] = &[0, 1, 2, 3];
+        let expected_word: &[u8] = &[0x63, 0x7c, 0x77, 0x7b];
+
+        let given_word = sub_word(word);
+
+        assert_eq!(given_word.as_slice(), expected_word);
     }
+
+    #[test]
+    fn add_round_key_test() {
+        let state: &[&[u8]] = &[
+            &[0b0000, 0b0001, 0b0010, 0b0011],
+            &[0b0100, 0b0101, 0b0110, 0b0111],
+            &[0b1000, 0b1001, 0b1010, 0b1011],
+            &[0b1100, 0b1101, 0b1110, 0b1111],
+        ];
+        let key: &[u8] = &[0b0000, 0b0001, 0b0010, 0b0100];
+        let expected_state: &[&[u8]] = &[
+            &[0b0000, 0b0001, 0b0010, 0b0011],
+            &[0b0101, 0b0100, 0b0111, 0b0110],
+            &[0b1010, 0b1011, 0b1000, 0b1001],
+            &[0b1000, 0b1001, 0b1010, 0b1011],
+        ];
+
+        let given_state = add_round_key(state, key);
+
+        assert_eq!(given_state, expected_state);
+    }
+
+    #[test]
+    fn key_expansion_test() {
+        // as provided in official paper
+        let key: &[u8] = &[
+            0x2b, 0x7e, 0x15, 0x16,
+            0x28, 0xae, 0xd2, 0xa6,
+            0xab, 0xf7, 0x15, 0x88,
+            0x09, 0xcf, 0x4f, 0x3c
+        ];
+        // also known as w
+        let expected_key_schedule = [
+            // copy of key
+            &[0x2b, 0x7e, 0x15, 0x16],
+            &[0x28, 0xae, 0xd2, 0xa6],
+            &[0xab, 0xf7, 0x15, 0x88],
+            &[0x09, 0xcf, 0x4f, 0x3c],
+
+            // rest of expansion
+            &[0xa0, 0xfa, 0xfe, 0x17],
+            &[0x88, 0x54, 0x2c, 0xb1],
+            &[0x23, 0xa3, 0x39, 0x39],
+            &[0x2a, 0x6c, 0x76, 0x05],
+            &[0xf2, 0xc2, 0x95, 0xf2],
+            &[0x7a, 0x96, 0xb9, 0x43],
+            &[0x59, 0x35, 0x80, 0x7a],
+            &[0x73, 0x59, 0xf6, 0x7f],
+            &[0x3d, 0x80, 0x47, 0x7d],
+            &[0x47, 0x16, 0xfe, 0x3e],
+            &[0x1e, 0x23, 0x7e, 0x44],
+            &[0x6d, 0x7a, 0x88, 0x3b],
+            &[0xef, 0x44, 0xa5, 0x41],
+            &[0xa8, 0x52, 0x5b, 0x7f],
+            &[0xb6, 0x71, 0x25, 0x3b],
+            &[0xdb, 0x0b, 0xad, 0x00],
+            &[0xd4, 0xd1, 0xc6, 0xf8],
+            &[0x7c, 0x83, 0x9d, 0x87],
+            &[0xca, 0xf2, 0xb8, 0xbc],
+            &[0x11, 0xf9, 0x15, 0xbc],
+            &[0x6d, 0x88, 0xa3, 0x7a],
+            &[0x11, 0x0b, 0x3e, 0xfd],
+            &[0xdb, 0xf9, 0x86, 0x41],
+            &[0xca, 0x00, 0x93, 0xfd],
+            &[0x4e, 0x54, 0xf7, 0x0e],
+            &[0x5f, 0x5f, 0xc9, 0xf3],
+            &[0x84, 0xa6, 0x4f, 0xb2],
+            &[0x4e, 0xa6, 0xdc, 0x4f],
+            &[0xea, 0xd2, 0x73, 0x21],
+            &[0xb5, 0x8d, 0xba, 0xd2],
+            &[0x31, 0x2b, 0xf5, 0x60],
+            &[0x7f, 0x8d, 0x29, 0x2f],
+            &[0xac, 0x77, 0x66, 0xf3],
+            &[0x19, 0xfa, 0xdc, 0x21],
+            &[0x28, 0xd1, 0x29, 0x41],
+            &[0x57, 0x5c, 0x00, 0x6e],
+            &[0xd0, 0x14, 0xf9, 0xa8],
+            &[0xc9, 0xee, 0x25, 0x89],
+            &[0xe1, 0x3f, 0x0c, 0xc8],
+            &[0xb6, 0x63, 0x0c, 0xa6]
+
+        ];
+
+        let given_key_schedule = key_expansion(key);
+
+        assert_eq!(given_key_schedule.to_vec(), expected_key_schedule.to_vec());
+    }
+
+    #[test]
+    fn repl() {}
 }
