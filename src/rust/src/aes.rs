@@ -4,9 +4,16 @@
 
 use xor;
 
+/// Number of columns (32-bit words) comprising the State. For this standard, Nb = 4.
 static Nb: usize = 4;
+
+/// Number of rounds, which is a function of Nk and Nb (which is fixed). For this implementation,
+/// Nr = 10.
 static Nr: usize = 10;
+
+/// Number of 32-bit words comprising the Cipher Key. For this implementation, Nk = 4.
 static Nk: usize = 4;
+
 static AES_128_BLOCK_SIZE_IN_BYTES: i32 = 16;
 
 /// Non-linear substitution table used in several byte substitution transformations and in the
