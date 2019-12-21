@@ -79,21 +79,13 @@ static Rcon: [[u8; 4]; 10] = [
 /// implementing a round function 10, 12, or 14 times (depending on the key length), with the
 /// final round differing slightly from the first Nr -1 rounds. The final State is then copied to
 /// the output as described in Sec. 3.4.
-pub fn encrypt_aes_128_in_ecb_mode(cipher: &Vec<u8>, key: &Vec<u8>) -> Vec<u8> {
+pub fn encrypt_aes_128_in_ecb_mode(bytes: &Vec<u8>, key: &Vec<u8>) -> Vec<u8> {
     let w = key_expansion(key);
-    let mut blocks = vec![vec![0; 16]; cipher.len() / 16];
-    for (i, byte) in cipher.iter().enumerate() {
-        blocks[(i as f32 / 16 as f32).floor() as usize][i % 16] = *byte;
-    }
+    let mut blocks = bytes_to_blocks(bytes);
     let mut cipher_blocks: Vec<Vec<u8>> = Vec::with_capacity(blocks.len());
 
     for block in blocks.iter() {
-        let mut state: Vec<Vec<u8>> = vec![vec![0; 4]; 4];
-        for r in 0..4 {
-            for c in 0..Nb {
-                state[c][r] = block[r + 4 * c];
-            }
-        }
+        let mut state = block_to_state(block);
 
         state = add_round_key(&state, &w[0..Nb].to_vec());
 
@@ -108,14 +100,7 @@ pub fn encrypt_aes_128_in_ecb_mode(cipher: &Vec<u8>, key: &Vec<u8>) -> Vec<u8> {
         state = shift_rows(&state);
         state = add_round_key(&state, &w[Nr * Nb..(Nr + 1) * Nb].to_vec());
 
-        let mut out: Vec<u8> = vec![0; 4 * Nb];
-        for r in 0..4 {
-            for c in 0..Nb {
-                out[r + 4 * c] = state[c][r];
-            }
-        }
-
-        cipher_blocks.push(out);
+        cipher_blocks.push(state_to_block(&state));
     }
 
     cipher_blocks.iter()
@@ -126,22 +111,13 @@ pub fn encrypt_aes_128_in_ecb_mode(cipher: &Vec<u8>, key: &Vec<u8>) -> Vec<u8> {
 /// produce a straightforward Inverse Cipher for the AES algorithm. The individual transformations
 /// used in the Inverse Cipher - InvShiftRows(), InvSubBytes(),InvMixColumns(),
 /// and AddRoundKey() – process the State and are described in the following subsections.
-pub fn decrypt_aes_128_in_ecb_mode(cipher: &[u8], key: &[u8]) -> Vec<u8> {
+pub fn decrypt_aes_128_in_ecb_mode(cipher: &Vec<u8>, key: &Vec<u8>) -> Vec<u8> {
     let w = key_expansion(key);
-
-    let mut blocks = vec![vec![0; 16]; cipher.len() / 16];
-    for (i, byte) in cipher.iter().enumerate() {
-        blocks[(i as f32 / 16 as f32).floor() as usize][i % 16] = *byte;
-    }
+    let mut blocks = bytes_to_blocks(cipher);
     let mut decrypted_blocks: Vec<Vec<u8>> = Vec::with_capacity(blocks.len());
 
     for block in blocks.iter() {
-        let mut state: Vec<Vec<u8>> = vec![vec![0; 4]; 4];
-        for r in 0..4 {
-            for c in 0..Nb {
-                state[c][r] = block[r + 4 * c];
-            }
-        }
+        let mut state = block_to_state(block);
 
         state = add_round_key(&state, &w[Nr * Nb..(Nr + 1) * Nb].to_vec());
 
@@ -156,18 +132,42 @@ pub fn decrypt_aes_128_in_ecb_mode(cipher: &[u8], key: &[u8]) -> Vec<u8> {
         state = inv_sub_bytes(&state);
         state = add_round_key(&state, &w[0..Nb].to_vec());
 
-        let mut out: Vec<u8> = vec![0; 4 * Nb];
-        for r in 0..4 {
-            for c in 0..Nb {
-                out[r + 4 * c] = state[c][r];
-            }
-        }
-
-        decrypted_blocks.push(out);
+        decrypted_blocks.push(state_to_block(&state));
     }
 
     decrypted_blocks.iter()
         .fold(Vec::new(), |acc, line| [acc.as_slice(), line.as_slice()].concat())
+}
+
+fn bytes_to_blocks(bytes: &Vec<u8>) -> Vec<Vec<u8>> {
+    let mut blocks = vec![vec![0; 16]; bytes.len() / 16];
+    for (i, byte) in bytes.iter().enumerate() {
+        blocks[(i as f32 / 16 as f32).floor() as usize][i % 16] = *byte;
+    }
+
+    blocks
+}
+
+fn block_to_state(block: &Vec<u8>) -> Vec<Vec<u8>> {
+    let mut state: Vec<Vec<u8>> = vec![vec![0; 4]; 4];
+    for r in 0..4 {
+        for c in 0..Nb {
+            state[c][r] = block[r + 4 * c];
+        }
+    }
+
+    state
+}
+
+fn state_to_block(state: &Vec<Vec<u8>>) -> Vec<u8> {
+    let mut out: Vec<u8> = vec![0; 4 * Nb];
+    for r in 0..4 {
+        for c in 0..Nb {
+            out[r + 4 * c] = state[c][r];
+        }
+    }
+
+    out
 }
 
 /// Routine used to generate a series of Round Keys from the Cipher Key.
@@ -563,15 +563,15 @@ mod tests {
             0x08, 0x09, 0x0a, 0x0b,
             0x0c, 0x0d, 0x0e, 0x0f
         ];
-        let expected = vec![
+        let expected_raw = vec![
             0x0, 0x11, 0x22, 0x33,
             0x44, 0x55, 0x66, 0x77,
             0x88, 0x99, 0xaa, 0xbb,
             0xcc, 0xdd, 0xee, 0xff
         ];
-        let result = decrypt_aes_128_in_ecb_mode(&cipher, &key);
+        let actual_raw = decrypt_aes_128_in_ecb_mode(&cipher, &key);
 
-        assert_eq!(result, expected);
+        assert_eq!(actual_raw, expected_raw);
     }
 
     #[test]
@@ -588,14 +588,34 @@ mod tests {
             0x08, 0x09, 0x0a, 0x0b,
             0x0c, 0x0d, 0x0e, 0x0f
         ];
-        let cipher = vec![
+        let expected_cipher = vec![
             0x69, 0xc4, 0xe0, 0xd8,
             0x6a, 0x7b, 0x04, 0x30,
             0xd8, 0xcd, 0xb7, 0x80,
             0x70, 0xb4, 0xc5, 0x5a
         ];
-        let result = encrypt_aes_128_in_ecb_mode(&raw, &key);
+        let actual_cipher = encrypt_aes_128_in_ecb_mode(&raw, &key);
 
-        assert_eq!(result, cipher);
+        assert_eq!(actual_cipher, expected_cipher);
+    }
+
+    #[test]
+    fn encrypt_and_decrypt() {
+        let raw = vec![
+            0x0, 0x11, 0x22, 0x33,
+            0x44, 0x55, 0x66, 0x77,
+            0x88, 0x99, 0xaa, 0xbb,
+            0xcc, 0xdd, 0xee, 0xff
+        ];
+        let key = vec![
+            0x00, 0x01, 0x02, 0x03,
+            0x04, 0x05, 0x06, 0x07,
+            0x08, 0x09, 0x0a, 0x0b,
+            0x0c, 0x0d, 0x0e, 0x0f
+        ];
+        let cipher = encrypt_aes_128_in_ecb_mode(&raw, &key);
+        let actual_deciphered = decrypt_aes_128_in_ecb_mode(&cipher, &key);
+
+        assert_eq!(raw, actual_deciphered);
     }
 }

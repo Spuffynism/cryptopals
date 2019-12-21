@@ -313,7 +313,7 @@ mod tests {
         let cipher = &file_util::read_base64_file_bytes("./resources/7.txt");
         let key = &vs!("YELLOW SUBMARINE");
 
-        let deciphered = aes::decrypt_aes_128_in_ecb_mode(cipher.as_slice(), key);
+        let deciphered = aes::decrypt_aes_128_in_ecb_mode(cipher, key);
 
         println!("{:?}", String::from_utf8(deciphered));
     }
