@@ -1,5 +1,4 @@
 use xor;
-use std::borrow::Borrow;
 
 static AES_128_BLOCK_SIZE_IN_BYTES: i32 = 16;
 
@@ -62,45 +61,34 @@ static RCON: [[u8; 4]; 10] = [
 //pub fn encrypt_aes_128_in_ecb_mode(cipher: &Vec<u8>, key: &Vec<u8>) -> Vec<u8> {}
 
 pub fn decrypt_aes_128_in_ecb_mode(cipher: &[u8], key: &[u8]) -> Vec<u8> {
-    let Nb = 4;
-    let Nr = 10;
-    let w = key_expansion(key);
-    let blocks = cipher.windows(AES_128_BLOCK_SIZE_IN_BYTES as usize);
+    let mut blocks = vec![vec![0; 16]; cipher.len() / 16];
+    for (i, byte) in cipher.iter().enumerate() {
+        blocks[(i as f32 / 16 as f32).floor() as usize][i % 16] =  *byte;
+    }
     let mut decrypted_blocks: Vec<Vec<u8>> = Vec::with_capacity(blocks.len());
 
-    for block in blocks.into_iter() {
+    for block in blocks.iter() {
+        let Nb = 4;
+        let Nr = 10;
+        let w = key_expansion(key);
         let mut state: Vec<Vec<u8>> = vec![vec![0; 4]; 4];
-
         for r in 0..4 {
             for c in 0..Nb {
                 state[c][r] = block[r + 4 * c];
             }
         }
 
-        print_simple_as_string("round[0].iinput", &block.to_vec());
-        // removed - 1 to (Nr + 1) * Nb - 1 cause indexes are exclusive in rust
-        print_as_string("round[0].ik_sch", &w[Nr * Nb..(Nr + 1) * Nb].to_vec());
         state = add_round_key(&state.clone(), &w[Nr * Nb..(Nr + 1) * Nb].to_vec());
 
         for round in (1..Nr).rev() {
-            print_as_string(format!("round[{}].istart", 10 - round).as_str(), &state);
             state = inv_shift_rows(state.clone());
-            print_as_string(format!("round[{}].is_row", 10 - round).as_str(), &state);
             state = inv_sub_bytes(state.clone());
-            print_as_string(format!("round[{}].is_box", 10 - round).as_str(), &state);
-            print_as_string(format!("round[{}].ik_sch", 10 - round).as_str(), &w[round * Nb..(round +
-                1) * Nb].to_vec());
-            // removed - 1 to (round + 1) * Nb -1 cause indexes are exclusive in rust
             state = add_round_key(&state.clone(), &w[round * Nb..(round + 1) * Nb].to_vec());
-            print_as_string(format!("round[{}].ik_add", 10 - round).as_str(), &state);
             state = inv_mix_columns(&state.clone());
         }
 
         state = inv_shift_rows(state);
-        print_as_string(format!("round[{}].is_row", 10).as_str(), &state);
         state = inv_sub_bytes(state);
-        print_as_string(format!("round[{}].is_box", 10).as_str(), &state);
-        print_as_string(format!("round[{}].ik_sch", 10).as_str(), &w[0..Nb].to_vec());
         state = add_round_key(&state, &w[0..Nb].to_vec());
 
         let mut out: Vec<u8> = vec![0; 16];
@@ -486,13 +474,28 @@ mod tests {
     }
 
     #[test]
-    fn decrypt_test() {
-        let cipher = vec![0x69, 0xc4, 0xe0, 0xd8, 0x6a, 0x7b, 0x04, 0x30, 0xd8, 0xcd, 0xb7, 0x80,
-                          0x70, 0xb4, 0xc5, 0x5a];
-        let key = vec![0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0a, 0x0b,
-                       0x0c, 0x0d, 0x0e, 0x0f];
+    fn decrypt_aes_128_in_ecb_mode_nist_test_case() {
+        let cipher = vec![
+            0x69, 0xc4, 0xe0, 0xd8,
+            0x6a, 0x7b, 0x04, 0x30,
+            0xd8, 0xcd, 0xb7, 0x80,
+            0x70, 0xb4, 0xc5, 0x5a
+        ];
+        let key = vec![
+            0x00, 0x01, 0x02, 0x03,
+            0x04, 0x05, 0x06, 0x07,
+            0x08, 0x09, 0x0a, 0x0b,
+            0x0c, 0x0d, 0x0e, 0x0f
+        ];
+        let expected = vec![
+            0x0, 0x11, 0x22, 0x33,
+            0x44, 0x55, 0x66, 0x77,
+            0x88, 0x99, 0xaa, 0xbb,
+            0xcc, 0xdd, 0xee, 0xff
+        ];
         let result = decrypt_aes_128_in_ecb_mode(&cipher, &key);
-        println!("{:x?}", result);
+
+        assert_eq!(result, expected);
     }
 
     #[test]
