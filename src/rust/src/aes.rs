@@ -5,16 +5,17 @@
 use xor;
 
 /// Number of columns (32-bit words) comprising the State. For this standard, Nb = 4.
+#[allow(non_upper_case_globals)]
 static Nb: usize = 4;
 
 /// Number of rounds, which is a function of Nk and Nb (which is fixed). For this implementation,
 /// Nr = 10.
+#[allow(non_upper_case_globals)]
 static Nr: usize = 10;
 
 /// Number of 32-bit words comprising the Cipher Key. For this implementation, Nk = 4.
+#[allow(non_upper_case_globals)]
 static Nk: usize = 4;
-
-static AES_128_BLOCK_SIZE_IN_BYTES: i32 = 16;
 
 /// Non-linear substitution table used in several byte substitution transformations and in the
 /// Key Expansion routine to perform a onefor-one substitution of a byte value.
@@ -59,6 +60,7 @@ static INVERSE_S_BOX: [u8; 256] = [
 ];
 
 /// The round constant word array.
+#[allow(non_upper_case_globals)]
 static Rcon: [[u8; 4]; 10] = [
     [0x01, 0x00, 0x00, 0x00],
     [0x02, 0x00, 0x00, 0x00],
@@ -113,7 +115,7 @@ pub fn decrypt_aes_128_in_ecb_mode(cipher: &[u8], key: &[u8]) -> Vec<u8> {
         state = inv_sub_bytes(&state);
         state = add_round_key(&state, &w[0..Nb].to_vec());
 
-        let mut out: Vec<u8> = vec![0; 4 * 4];
+        let mut out: Vec<u8> = vec![0; 4 * Nb];
         for r in 0..4 {
             for c in 0..Nb {
                 out[r + 4 * c] = state[c][r];
@@ -139,6 +141,7 @@ fn key_expansion(key: &[u8]) -> Vec<Vec<u8>> {
         w[i] = key[4 * i..4 * i + 4].to_vec();
     }
 
+    #[allow(unused_assignments)]
     let mut temp: Vec<u8> = Vec::with_capacity(Nk);
     for i in Nk..(Nb * (Nr + 1)) {
         temp = w[i - 1].to_vec();
@@ -176,7 +179,7 @@ fn add_round_key(state: &Vec<Vec<u8>>, round_key: &Vec<Vec<u8>>) -> Vec<Vec<u8>>
 /// Transformation in the Cipher that processes the State using a nonlinear byte
 /// substitution table (S-box) that operates on each of the State bytes
 /// independently.
-fn sub_bytes() {}
+//fn sub_bytes() {}
 
 /// Transformation in the Inverse Cipher that is the inverse of
 fn inv_sub_bytes(state: &Vec<Vec<u8>>) -> Vec<Vec<u8>> {
@@ -192,7 +195,7 @@ fn inv_sub_bytes(state: &Vec<Vec<u8>>) -> Vec<Vec<u8>> {
 
 /// Transformation in the Cipher that processes the State by cyclically
 /// shifting the last three rows of the State by different offsets.
-fn shift_rows() {}
+//fn shift_rows() {}
 
 /// Transformation in the Inverse Cipher that is the inverse of inv_shift_rows
 fn inv_shift_rows(state: &Vec<Vec<u8>>) -> Vec<Vec<u8>> {
@@ -207,7 +210,7 @@ fn inv_shift_rows(state: &Vec<Vec<u8>>) -> Vec<Vec<u8>> {
 /// Transformation in the Cipher that takes all of the columns of the
 /// State and mixes their data (independently of one another) to
 /// produce new columns.
-fn mix_columns() {}
+//fn mix_columns() {}
 
 /// Transformation in the Inverse Cipher that is the inverse of mix_columns()
 fn inv_mix_columns(state: &Vec<Vec<u8>>) -> Vec<Vec<u8>> {
@@ -241,7 +244,7 @@ fn multiply_in_g(polynomial_value: u8, state_value: u8) -> u8 {
     let mut b = state_value;
     let mut p = 0;
 
-    for counter in 0..8 {
+    for _ in 0..8 {
         if (b & 1) != 0 {
             p ^= a;
         }
@@ -502,7 +505,4 @@ mod tests {
 
         assert_eq!(result, expected);
     }
-
-    #[test]
-    fn repl() {}
 }

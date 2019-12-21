@@ -1,5 +1,4 @@
 use std::char;
-use std::str;
 use std::f32;
 
 use rustc_serialize::base64::{STANDARD, ToBase64};
@@ -9,6 +8,7 @@ use xor;
 use file_util;
 use aes;
 use hex;
+use std::collections::HashSet;
 
 static ALPHABET: [char; 74] = [
     '0', '1', '2', '3', '4', '5', '6', '7', '8', '9',
@@ -25,7 +25,7 @@ pub fn hex_fixed_xor(hex_input: &Vec<u8>, hex_key: &Vec<u8>) -> Vec<u8> {
     let input: Vec<u8> = hex::hex_to_bytes(hex_input);
     let key: Vec<u8> = hex::hex_to_bytes(hex_key);
 
-    return xor::fixed_xor(&input, &key);
+    xor::fixed_xor(&input, &key)
 }
 
 pub fn find_single_byte_xor(input: &Vec<u8>) -> (char, f32, Vec<u8>) {
@@ -49,7 +49,7 @@ pub fn find_single_byte_xor(input: &Vec<u8>) -> (char, f32, Vec<u8>) {
         }
     }
 
-    return (best_key, best_score, best_result);
+    (best_key, best_score, best_result)
 }
 
 pub fn hex_find_single_byte_xor(hex_input: &Vec<u8>) -> (char, f32, Vec<u8>) {
@@ -65,7 +65,7 @@ fn calculate_human_resemblance_score(input: &Vec<u8>) -> f32 {
         }
     }
 
-    return human_characters_count as f32 / input.len() as f32;
+    human_characters_count as f32 / input.len() as f32
 }
 
 fn find_most_human(candidates: Vec<Vec<u8>>) -> (char, f32, Vec<u8>, Vec<u8>) {
@@ -85,11 +85,10 @@ fn find_most_human(candidates: Vec<Vec<u8>>) -> (char, f32, Vec<u8>, Vec<u8>) {
         }
     }
 
-    return (best_key, best_score, best_result, best_candidate);
+    (best_key, best_score, best_result, best_candidate)
 }
 
 fn break_repeating_key_xor(cipher: &Vec<u8>, min_key_size: i32, max_key_size: i32) -> (Vec<u8>, Vec<u8>) {
-    let key: Vec<u8> = vec![];
     let mut best_key_size = 0;
     let mut best_normalized_hamming_distance = std::f32::MAX;
 
@@ -143,17 +142,17 @@ fn break_repeating_key_xor(cipher: &Vec<u8>, min_key_size: i32, max_key_size: i3
 
     let mut key = Vec::with_capacity(rows.len());
     for row in rows.iter() {
-        let (best_key, best_score, best_result) = find_single_byte_xor(row);
+        let (best_key, _best_score, _best_result) = find_single_byte_xor(row);
         key.push(best_key as u8);
     }
 
     let deciphered: Vec<u8> = xor::fixed_key_xor(&cipher, &key);
 
-    return (key, deciphered);
+    (key, deciphered)
 }
 
 fn normalized_hamming_distance_in_bits(from: &Vec<u8>, to: &Vec<u8>) -> f32 {
-    (hamming_distance_in_bits(from, to) as f32) / (to.len() as f32)
+    hamming_distance_in_bits(from, to) as f32 / to.len() as f32
 }
 
 fn hamming_distance_in_bits(from: &Vec<u8>, to: &Vec<u8>) -> u32 {
@@ -164,11 +163,11 @@ fn hamming_distance_in_bits(from: &Vec<u8>, to: &Vec<u8>) -> u32 {
         distance += bits_difference_count(*character, to[i]) as u32;
     }
 
-    return distance;
+    distance
 }
 
 fn bits_difference_count(from: u8, to: u8) -> u8 {
-    let mut distance: u8 = 0;
+    let mut count: u8 = 0;
     let mut i = from ^ to;
 
     loop {
@@ -177,13 +176,13 @@ fn bits_difference_count(from: u8, to: u8) -> u8 {
         }
 
         if i & 1 == 1 {
-            distance += 1;
+            count += 1;
         }
 
         i >>= 1;
     }
 
-    return distance;
+    count
 }
 
 fn detect_aes_in_ecb_mode(cipher_candidates: Vec<Vec<u8>>) -> Vec<u8> {
@@ -193,6 +192,15 @@ fn detect_aes_in_ecb_mode(cipher_candidates: Vec<Vec<u8>>) -> Vec<u8> {
         ciphers_as_blocks.push(vec![vec![0; 16]; cipher.len() / 16]);
         for (j, byte) in cipher.iter().enumerate() {
             ciphers_as_blocks[i][(j as f32 / 16 as f32).floor() as usize][j % 16] = *byte;
+        }
+
+        let unique_cipher_parts = ciphers_as_blocks[i].iter().cloned()
+            .collect::<HashSet<Vec<u8>>>();
+
+        if unique_cipher_parts.len() < ciphers_as_blocks[i].len() {
+            return ciphers_as_blocks[i]
+                .iter()
+                .fold(Vec::new(), |acc, val| [acc.as_slice(), val.as_slice()].concat());
         }
     }
 
@@ -205,7 +213,7 @@ mod tests {
 
     #[test]
     fn challenge1() {
-        let input: &Vec<u8> =
+        let input =
             &vs!("49276d206b696c6c696e6720796f757220627261696e206c696b65206120706f69736f6e6f7573206d757368726f6f6d");
         let expected: &str = "SSdtIGtpbGxpbmcgeW91ciBicmFpbiBsaWtlIGEgcG9pc29ub3VzIG11c2hyb29t";
 
@@ -214,20 +222,20 @@ mod tests {
 
     #[test]
     fn challenge2() {
-        let input: &Vec<u8> = &vs!("1c0111001f010100061a024b53535009181c");
-        let key: &Vec<u8> = &vs!("686974207468652062756c6c277320657965");
-        let expected: &Vec<u8> = &vs!("746865206b696420646f6e277420706c6179");
+        let input = &vs!("1c0111001f010100061a024b53535009181c");
+        let key = &vs!("686974207468652062756c6c277320657965");
+        let expected = &vs!("746865206b696420646f6e277420706c6179");
 
         assert_eq!(hex_fixed_xor(input, key), hex::hex_to_bytes(expected))
     }
 
     #[test]
     fn challenge3() {
-        let input: &Vec<u8> =
+        let input =
             &vs!("1b37373331363f78151b7f2b783431333d78397828372d363c78373e783a393b3736");
         let expected = &vs!("Cooking MC's like a pound of bacon");
 
-        let (key, score, xored_result) = hex_find_single_byte_xor(input);
+        let (_key, _score, xored_result) = hex_find_single_byte_xor(input);
 
         assert_eq!(xored_result, *expected);
     }
@@ -237,7 +245,7 @@ mod tests {
         let lines = file_util::read_file_lines("./resources/4.txt");
         let expected = vs!("7b5a4215415d544115415d5015455447414c155c46155f4058455c5b523f");
 
-        let (key, score, xored_result, candidate) = find_most_human(lines);
+        let (_key, _score, xored_result, candidate) = find_most_human(lines);
 
         println!("{:?}", String::from_utf8(xored_result));
         assert_eq!(candidate, expected);
@@ -294,7 +302,7 @@ mod tests {
     fn challenge6() {
         let cipher = &file_util::read_base64_file_bytes("./resources/6.txt");
 
-        let (key, deciphered) = break_repeating_key_xor(cipher, 2, 40);
+        let (_key, deciphered) = break_repeating_key_xor(cipher, 2, 40);
 
         println!("{:?}", String::from_utf8(deciphered));
     }
@@ -311,10 +319,11 @@ mod tests {
 
     #[test]
     fn challenge8() {
-        let lines = file_util::read_file_lines("./resources/8.txt");
+        let lines = file_util::read_hex_file_lines("./resources/8.txt");
+        let expected = hex::hex_to_bytes(&vs!("d880619740a8a19b7840a8a31c810a3d08649af70dc06f4fd5d2d69c744cd283e2dd052f6b641dbf9d11b0348542bb5708649af70dc06f4fd5d2d69c744cd2839475c9dfdbc1d46597949d9c7e82bf5a08649af70dc06f4fd5d2d69c744cd28397a93eab8d6aecd566489154789a6b0308649af70dc06f4fd5d2d69c744cd283d403180c98c8f6db1f2a3f9c4040deb0ab51b29933f2c123c58386b06fba186a"));
 
-        let found = detect_aes_in_ecb_mode(lines);
+        let actual_found = detect_aes_in_ecb_mode(lines);
 
-        println!("{:?}", found);
+        assert_eq!(actual_found, expected);
     }
 }
