@@ -210,6 +210,7 @@ fn detect_aes_in_ecb_mode(cipher_candidates: Vec<Vec<u8>>) -> Vec<u8> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use aes::decrypt_aes_128_in_ecb_mode;
 
     #[test]
     fn challenge1() {
@@ -319,11 +320,14 @@ mod tests {
 
     #[test]
     fn challenge8() {
+        let key = &vs!("YELLOW SUBMARINE");
         let lines = file_util::read_hex_file_lines("./resources/8.txt");
         let expected = hex::hex_to_bytes(&vs!("d880619740a8a19b7840a8a31c810a3d08649af70dc06f4fd5d2d69c744cd283e2dd052f6b641dbf9d11b0348542bb5708649af70dc06f4fd5d2d69c744cd2839475c9dfdbc1d46597949d9c7e82bf5a08649af70dc06f4fd5d2d69c744cd28397a93eab8d6aecd566489154789a6b0308649af70dc06f4fd5d2d69c744cd283d403180c98c8f6db1f2a3f9c4040deb0ab51b29933f2c123c58386b06fba186a"));
 
         let actual_found = detect_aes_in_ecb_mode(lines);
 
+        let deciphered = decrypt_aes_128_in_ecb_mode(&actual_found, key);
+        println!("{:?}", String::from_utf8(deciphered));
         assert_eq!(actual_found, expected);
     }
 }

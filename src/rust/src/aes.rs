@@ -79,7 +79,48 @@ static Rcon: [[u8; 4]; 10] = [
 /// implementing a round function 10, 12, or 14 times (depending on the key length), with the
 /// final round differing slightly from the first Nr -1 rounds. The final State is then copied to
 /// the output as described in Sec. 3.4.
-//pub fn encrypt_aes_128_in_ecb_mode(cipher: &Vec<u8>, key: &Vec<u8>) -> Vec<u8> {}
+pub fn encrypt_aes_128_in_ecb_mode(cipher: &Vec<u8>, key: &Vec<u8>) -> Vec<u8> {
+    let w = key_expansion(key);
+    let mut blocks = vec![vec![0; 16]; cipher.len() / 16];
+    for (i, byte) in cipher.iter().enumerate() {
+        blocks[(i as f32 / 16 as f32).floor() as usize][i % 16] = *byte;
+    }
+    let mut cipher_blocks: Vec<Vec<u8>> = Vec::with_capacity(blocks.len());
+
+    for block in blocks.iter() {
+        let mut state: Vec<Vec<u8>> = vec![vec![0; 4]; 4];
+        for r in 0..4 {
+            for c in 0..Nb {
+                state[c][r] = block[r + 4 * c];
+            }
+        }
+
+        state = add_round_key(&state, &w[0..Nb].to_vec());
+
+        for round in 1..Nr {
+            state = sub_bytes(&state);
+            state = shift_rows(&state);
+            state = mix_columns(&state);
+            state = add_round_key(&state, &w[round * Nb..(round + 1) * Nb].to_vec());
+        }
+
+        state = sub_bytes(&state);
+        state = shift_rows(&state);
+        state = add_round_key(&state, &w[Nr * Nb..(Nr + 1) * Nb].to_vec());
+
+        let mut out: Vec<u8> = vec![0; 4 * Nb];
+        for r in 0..4 {
+            for c in 0..Nb {
+                out[r + 4 * c] = state[c][r];
+            }
+        }
+
+        cipher_blocks.push(out);
+    }
+
+    cipher_blocks.iter()
+        .fold(Vec::new(), |acc, line| [acc.as_slice(), line.as_slice()].concat())
+}
 
 /// The Cipher transformations in Sec. 5.1 can be inverted and then implemented in reverse order to
 /// produce a straightforward Inverse Cipher for the AES algorithm. The individual transformations
@@ -142,7 +183,7 @@ fn key_expansion(key: &[u8]) -> Vec<Vec<u8>> {
     }
 
     #[allow(unused_assignments)]
-    let mut temp: Vec<u8> = Vec::with_capacity(Nk);
+        let mut temp: Vec<u8> = Vec::with_capacity(Nk);
     for i in Nk..(Nb * (Nr + 1)) {
         temp = w[i - 1].to_vec();
         if i % Nk == 0 {
@@ -179,14 +220,20 @@ fn add_round_key(state: &Vec<Vec<u8>>, round_key: &Vec<Vec<u8>>) -> Vec<Vec<u8>>
 /// Transformation in the Cipher that processes the State using a nonlinear byte
 /// substitution table (S-box) that operates on each of the State bytes
 /// independently.
-//fn sub_bytes() {}
+fn sub_bytes(state: &Vec<Vec<u8>>) -> Vec<Vec<u8>> {
+    sub_bytes_with_box(&state, &S_BOX)
+}
 
 /// Transformation in the Inverse Cipher that is the inverse of
 fn inv_sub_bytes(state: &Vec<Vec<u8>>) -> Vec<Vec<u8>> {
+    sub_bytes_with_box(&state, &INVERSE_S_BOX)
+}
+
+fn sub_bytes_with_box(state: &Vec<Vec<u8>>, substitution_box: &[u8; 256]) -> Vec<Vec<u8>> {
     let mut substituted_bytes: Vec<Vec<u8>> = vec![vec![0; 4]; 4];
     for (i, row) in state.iter().enumerate() {
         for (j, byte) in row.iter().enumerate() {
-            substituted_bytes[i][j] = INVERSE_S_BOX[*byte as usize];
+            substituted_bytes[i][j] = substitution_box[*byte as usize];
         }
     }
 
@@ -195,7 +242,14 @@ fn inv_sub_bytes(state: &Vec<Vec<u8>>) -> Vec<Vec<u8>> {
 
 /// Transformation in the Cipher that processes the State by cyclically
 /// shifting the last three rows of the State by different offsets.
-//fn shift_rows() {}
+fn shift_rows(state: &Vec<Vec<u8>>) -> Vec<Vec<u8>> {
+    vec![
+        vec![state[0][0], state[1][1], state[2][2], state[3][3]],
+        vec![state[1][0], state[2][1], state[3][2], state[0][3]],
+        vec![state[2][0], state[3][1], state[0][2], state[1][3]],
+        vec![state[3][0], state[0][1], state[1][2], state[2][3]],
+    ]
+}
 
 /// Transformation in the Inverse Cipher that is the inverse of inv_shift_rows
 fn inv_shift_rows(state: &Vec<Vec<u8>>) -> Vec<Vec<u8>> {
@@ -210,7 +264,15 @@ fn inv_shift_rows(state: &Vec<Vec<u8>>) -> Vec<Vec<u8>> {
 /// Transformation in the Cipher that takes all of the columns of the
 /// State and mixes their data (independently of one another) to
 /// produce new columns.
-//fn mix_columns() {}
+fn mix_columns(state: &Vec<Vec<u8>>) -> Vec<Vec<u8>> {
+    let fixed_polynomial = vec![
+        vec![0x02, 0x03, 0x01, 0x01],
+        vec![0x01, 0x02, 0x03, 0x01],
+        vec![0x01, 0x01, 0x02, 0x03],
+        vec![0x03, 0x01, 0x01, 0x02],
+    ];
+    mix_columns_using_substitution_matrix(&state, &fixed_polynomial)
+}
 
 /// Transformation in the Inverse Cipher that is the inverse of mix_columns()
 fn inv_mix_columns(state: &Vec<Vec<u8>>) -> Vec<Vec<u8>> {
@@ -220,12 +282,18 @@ fn inv_mix_columns(state: &Vec<Vec<u8>>) -> Vec<Vec<u8>> {
         vec![0x0d, 0x09, 0x0e, 0x0b],
         vec![0x0b, 0x0d, 0x09, 0x0e],
     ];
+
+    mix_columns_using_substitution_matrix(&state, &fixed_polynomial)
+}
+
+fn mix_columns_using_substitution_matrix(state: &Vec<Vec<u8>>, substitution_matrix: &Vec<Vec<u8>>)
+                                         -> Vec<Vec<u8>> {
     let mut result = vec![vec![0; 4]; 4];
     for c in 0..4 {
         for r in 0..4 {
             let mut multiplications_xor = 0;
             for i in 0..4 {
-                multiplications_xor ^= multiply_in_g(fixed_polynomial[r][i], state[c][i])
+                multiplications_xor ^= multiply_in_g(substitution_matrix[r][i], state[c][i])
             }
             result[c][r] = multiplications_xor
         }
@@ -504,5 +572,30 @@ mod tests {
         let result = decrypt_aes_128_in_ecb_mode(&cipher, &key);
 
         assert_eq!(result, expected);
+    }
+
+    #[test]
+    fn encrypt_aes_128_in_ecb_mode_test_case() {
+        let raw = vec![
+            0x0, 0x11, 0x22, 0x33,
+            0x44, 0x55, 0x66, 0x77,
+            0x88, 0x99, 0xaa, 0xbb,
+            0xcc, 0xdd, 0xee, 0xff
+        ];
+        let key = vec![
+            0x00, 0x01, 0x02, 0x03,
+            0x04, 0x05, 0x06, 0x07,
+            0x08, 0x09, 0x0a, 0x0b,
+            0x0c, 0x0d, 0x0e, 0x0f
+        ];
+        let cipher = vec![
+            0x69, 0xc4, 0xe0, 0xd8,
+            0x6a, 0x7b, 0x04, 0x30,
+            0xd8, 0xcd, 0xb7, 0x80,
+            0x70, 0xb4, 0xc5, 0x5a
+        ];
+        let result = encrypt_aes_128_in_ecb_mode(&raw, &key);
+
+        assert_eq!(result, cipher);
     }
 }
