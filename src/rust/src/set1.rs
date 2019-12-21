@@ -291,7 +291,6 @@ mod tests {
 
         let (key, deciphered) = break_repeating_key_xor(cipher, 2, 40);
 
-        println!("{:?}", String::from_utf8(key));
         println!("{:?}", String::from_utf8(deciphered));
     }
 
@@ -302,6 +301,6 @@ mod tests {
 
         let deciphered = aes::decrypt_aes_128_in_ecb_mode(cipher.as_slice(), key);
 
-        println!("{:?}", String::from_utf8(deciphered.to_vec()));
+        println!("{:?}", String::from_utf8(deciphered));
     }
 }
