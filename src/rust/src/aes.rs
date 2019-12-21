@@ -1,7 +1,16 @@
+/// Resources used:
+/// https://csrc.nist.gov/csrc/media/publications/fips/197/final/documents/fips-197.pdf
+/// https://en.wikipedia.org/wiki/Rijndael_MixColumns#Implementation_example
+
 use xor;
 
+static Nb: usize = 4;
+static Nr: usize = 10;
+static Nk: usize = 4;
 static AES_128_BLOCK_SIZE_IN_BYTES: i32 = 16;
 
+/// Non-linear substitution table used in several byte substitution transformations and in the
+/// Key Expansion routine to perform a onefor-one substitution of a byte value.
 static S_BOX: [u8; 256] = [
     0x63, 0x7c, 0x77, 0x7b, 0xf2, 0x6b, 0x6f, 0xc5, 0x30, 0x01, 0x67, 0x2b, 0xfe, 0xd7, 0xab, 0x76,
     0xca, 0x82, 0xc9, 0x7d, 0xfa, 0x59, 0x47, 0xf0, 0xad, 0xd4, 0xa2, 0xaf, 0x9c, 0xa4, 0x72, 0xc0,
@@ -21,6 +30,8 @@ static S_BOX: [u8; 256] = [
     0x8c, 0xa1, 0x89, 0x0d, 0xbf, 0xe6, 0x42, 0x68, 0x41, 0x99, 0x2d, 0x0f, 0xb0, 0x54, 0xbb, 0x16
 ];
 
+/// Inverse of the S-BOX. Used in the InvSubBytes step to perform reverse one-for-one substitution
+/// of a byte.
 static INVERSE_S_BOX: [u8; 256] = [
     0x52, 0x09, 0x6a, 0xd5, 0x30, 0x36, 0xa5, 0x38, 0xbf, 0x40, 0xa3, 0x9e, 0x81, 0xf3, 0xd7, 0xfb,
     0x7c, 0xe3, 0x39, 0x82, 0x9b, 0x2f, 0xff, 0x87, 0x34, 0x8e, 0x43, 0x44, 0xc4, 0xde, 0xe9, 0xcb,
@@ -40,6 +51,7 @@ static INVERSE_S_BOX: [u8; 256] = [
     0x17, 0x2b, 0x04, 0x7e, 0xba, 0x77, 0xd6, 0x26, 0xe1, 0x69, 0x14, 0x63, 0x55, 0x21, 0x0c, 0x7d
 ];
 
+/// The round constant word array.
 static RCON: [[u8; 4]; 10] = [
     [0x01, 0x00, 0x00, 0x00],
     [0x02, 0x00, 0x00, 0x00],
@@ -60,17 +72,20 @@ static RCON: [[u8; 4]; 10] = [
 /// the output as described in Sec. 3.4.
 //pub fn encrypt_aes_128_in_ecb_mode(cipher: &Vec<u8>, key: &Vec<u8>) -> Vec<u8> {}
 
+/// The Cipher transformations in Sec. 5.1 can be inverted and then implemented in reverse order to
+/// produce a straightforward Inverse Cipher for the AES algorithm. The individual transformations
+/// used in the Inverse Cipher - InvShiftRows(), InvSubBytes(),InvMixColumns(),
+/// and AddRoundKey() – process the State and are described in the following subsections.
 pub fn decrypt_aes_128_in_ecb_mode(cipher: &[u8], key: &[u8]) -> Vec<u8> {
+    let w = key_expansion(key);
+
     let mut blocks = vec![vec![0; 16]; cipher.len() / 16];
     for (i, byte) in cipher.iter().enumerate() {
-        blocks[(i as f32 / 16 as f32).floor() as usize][i % 16] =  *byte;
+        blocks[(i as f32 / 16 as f32).floor() as usize][i % 16] = *byte;
     }
     let mut decrypted_blocks: Vec<Vec<u8>> = Vec::with_capacity(blocks.len());
 
     for block in blocks.iter() {
-        let Nb = 4;
-        let Nr = 10;
-        let w = key_expansion(key);
         let mut state: Vec<Vec<u8>> = vec![vec![0; 4]; 4];
         for r in 0..4 {
             for c in 0..Nb {
@@ -91,7 +106,7 @@ pub fn decrypt_aes_128_in_ecb_mode(cipher: &[u8], key: &[u8]) -> Vec<u8> {
         state = inv_sub_bytes(state);
         state = add_round_key(&state, &w[0..Nb].to_vec());
 
-        let mut out: Vec<u8> = vec![0; 16];
+        let mut out: Vec<u8> = vec![0; 4 * 4];
         for r in 0..4 {
             for c in 0..Nb {
                 out[r + 4 * c] = state[c][r];
@@ -105,18 +120,12 @@ pub fn decrypt_aes_128_in_ecb_mode(cipher: &[u8], key: &[u8]) -> Vec<u8> {
         .fold(Vec::new(), |acc, line| [acc.as_slice(), line.as_slice()].concat());
 }
 
-fn print_as_string(step: &str, bytes: &Vec<Vec<u8>>) {
-    println!("{}\t{:x?}", step, bytes);
-}
-
-fn print_simple_as_string(step: &str, bytes: &Vec<u8>) {
-    println!("{}\t{:x?}", step, bytes);
-}
-
+/// Routine used to generate a series of Round Keys from the Cipher Key.
+/// The Key Expansion generates a total of Nb (Nr + 1) words: the algorithm requires
+/// an initial set of Nb words, and each of the Nr rounds requires Nb words of key data. The
+/// resulting key schedule consists of a linear array of 4-byte words, denoted [wi ], with i in
+/// the range 0 <= i < Nb(Nr + 1).
 fn key_expansion(key: &[u8]) -> Vec<Vec<u8>> {
-    let Nk = 4;
-    let Nb = 4;
-    let Nr = 10;
     let mut w: Vec<Vec<u8>> = vec![vec![0; Nk]; Nb * (Nr + 1)];
 
     for i in 0..Nk {
@@ -142,16 +151,6 @@ fn key_expansion(key: &[u8]) -> Vec<Vec<u8>> {
         .collect()
 }
 
-fn decrypt_block(block: &Vec<u8>, key: &Vec<u8>) -> Vec<u8> {
-    ecb_encrypt(block, key)
-}
-
-fn ecb_encrypt(cipher: &Vec<u8>, key: &Vec<u8>) -> Vec<u8> {
-    xor::fixed_key_xor(cipher, key)
-}
-
-// 1 time & last of n times
-
 /// Transformation in the Cipher and Inverse Cipher in which a Round
 /// Key is added to the State using an XOR operation. The length of a
 /// Round Key equals the size of the State (i.e., for Nb = 4, the Round
@@ -172,7 +171,7 @@ fn add_round_key(state: &Vec<Vec<u8>>, round_key: &Vec<Vec<u8>>) -> Vec<Vec<u8>>
 /// independently.
 fn sub_bytes() {}
 
-// Transformation in the Inverse Cipher that is the inverse of
+/// Transformation in the Inverse Cipher that is the inverse of
 fn inv_sub_bytes(state: Vec<Vec<u8>>) -> Vec<Vec<u8>> {
     let mut substituted_bytes: Vec<Vec<u8>> = vec![vec![0; 4]; 4];
     for (i, row) in state.iter().enumerate() {
@@ -188,7 +187,7 @@ fn inv_sub_bytes(state: Vec<Vec<u8>>) -> Vec<Vec<u8>> {
 /// shifting the last three rows of the State by different offsets.
 fn shift_rows() {}
 
-// Transformation in the Inverse Cipher that is the inverse of inv_shift_rows
+/// Transformation in the Inverse Cipher that is the inverse of inv_shift_rows
 fn inv_shift_rows(state: Vec<Vec<u8>>) -> Vec<Vec<u8>> {
     vec![
         vec![state[0][0], state[3][1], state[2][2], state[1][3]],
@@ -203,7 +202,7 @@ fn inv_shift_rows(state: Vec<Vec<u8>>) -> Vec<Vec<u8>> {
 /// produce new columns.
 fn mix_columns() {}
 
-// Transformation in the Inverse Cipher that is the inverse of mix_columns()
+/// Transformation in the Inverse Cipher that is the inverse of mix_columns()
 fn inv_mix_columns(state: &Vec<Vec<u8>>) -> Vec<Vec<u8>> {
     let fixed_polynomial = vec![
         vec![0x0e, 0x0b, 0x0d, 0x09],
@@ -225,6 +224,9 @@ fn inv_mix_columns(state: &Vec<Vec<u8>>) -> Vec<Vec<u8>> {
 }
 
 /// Adapted from https://en.wikipedia.org/wiki/Rijndael_MixColumns#Implementation_example
+/// In the polynomial representation, multiplication in GF(2^8) (denoted by •) corresponds with the
+/// multiplication of polynomials modulo an irreducible polynomial of degree 8. A polynomial is
+/// irreducible if its only divisors are one and itself
 fn multiply_in_g(a: u8, b: u8) -> u8 {
     let irreducible_polynomial = 0x1b;
     let mut a_copy = a;
@@ -268,10 +270,6 @@ fn sub_word(word: &[u8]) -> Vec<u8> {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    /// (x) - Multiplication of two polynomials (each with degree < 4) modulo x^4 + 1
-    #[test]
-    fn calculate_round_key_test() {}
 
     #[test]
     fn rot_word_test() {
