@@ -59,7 +59,7 @@ static INVERSE_S_BOX: [u8; 256] = [
 ];
 
 /// The round constant word array.
-static RCON: [[u8; 4]; 10] = [
+static Rcon: [[u8; 4]; 10] = [
     [0x01, 0x00, 0x00, 0x00],
     [0x02, 0x00, 0x00, 0x00],
     [0x04, 0x00, 0x00, 0x00],
@@ -100,17 +100,17 @@ pub fn decrypt_aes_128_in_ecb_mode(cipher: &[u8], key: &[u8]) -> Vec<u8> {
             }
         }
 
-        state = add_round_key(&state.clone(), &w[Nr * Nb..(Nr + 1) * Nb].to_vec());
+        state = add_round_key(&state, &w[Nr * Nb..(Nr + 1) * Nb].to_vec());
 
         for round in (1..Nr).rev() {
-            state = inv_shift_rows(state.clone());
-            state = inv_sub_bytes(state.clone());
-            state = add_round_key(&state.clone(), &w[round * Nb..(round + 1) * Nb].to_vec());
-            state = inv_mix_columns(&state.clone());
+            state = inv_shift_rows(&state);
+            state = inv_sub_bytes(&state);
+            state = add_round_key(&state, &w[round * Nb..(round + 1) * Nb].to_vec());
+            state = inv_mix_columns(&state);
         }
 
-        state = inv_shift_rows(state);
-        state = inv_sub_bytes(state);
+        state = inv_shift_rows(&state);
+        state = inv_sub_bytes(&state);
         state = add_round_key(&state, &w[0..Nb].to_vec());
 
         let mut out: Vec<u8> = vec![0; 4 * 4];
@@ -123,8 +123,8 @@ pub fn decrypt_aes_128_in_ecb_mode(cipher: &[u8], key: &[u8]) -> Vec<u8> {
         decrypted_blocks.push(out);
     }
 
-    return decrypted_blocks.iter()
-        .fold(Vec::new(), |acc, line| [acc.as_slice(), line.as_slice()].concat());
+    decrypted_blocks.iter()
+        .fold(Vec::new(), |acc, line| [acc.as_slice(), line.as_slice()].concat())
 }
 
 /// Routine used to generate a series of Round Keys from the Cipher Key.
@@ -136,16 +136,16 @@ fn key_expansion(key: &[u8]) -> Vec<Vec<u8>> {
     let mut w: Vec<Vec<u8>> = vec![vec![0; Nk]; Nb * (Nr + 1)];
 
     for i in 0..Nk {
-        w[i] = [key[4 * i], key[4 * i + 1], key[4 * i + 2], key[4 * i + 3]].to_vec();
+        w[i] = key[4 * i..4 * i + 4].to_vec();
     }
 
-    let mut temp: Vec<u8> = Vec::new();
+    let mut temp: Vec<u8> = Vec::with_capacity(Nk);
     for i in Nk..(Nb * (Nr + 1)) {
         temp = w[i - 1].to_vec();
         if i % Nk == 0 {
             temp = xor::fixed_key_xor(
                 &sub_word(&rot_word(temp.as_slice())),
-                &RCON[(i / Nk) - 1].to_vec(),
+                &Rcon[(i / Nk) - 1].to_vec(),
             ).to_vec();
         } else if Nk > 6 && i % Nk == 4 {
             temp = sub_word(temp.as_slice());
@@ -179,7 +179,7 @@ fn add_round_key(state: &Vec<Vec<u8>>, round_key: &Vec<Vec<u8>>) -> Vec<Vec<u8>>
 fn sub_bytes() {}
 
 /// Transformation in the Inverse Cipher that is the inverse of
-fn inv_sub_bytes(state: Vec<Vec<u8>>) -> Vec<Vec<u8>> {
+fn inv_sub_bytes(state: &Vec<Vec<u8>>) -> Vec<Vec<u8>> {
     let mut substituted_bytes: Vec<Vec<u8>> = vec![vec![0; 4]; 4];
     for (i, row) in state.iter().enumerate() {
         for (j, byte) in row.iter().enumerate() {
@@ -195,7 +195,7 @@ fn inv_sub_bytes(state: Vec<Vec<u8>>) -> Vec<Vec<u8>> {
 fn shift_rows() {}
 
 /// Transformation in the Inverse Cipher that is the inverse of inv_shift_rows
-fn inv_shift_rows(state: Vec<Vec<u8>>) -> Vec<Vec<u8>> {
+fn inv_shift_rows(state: &Vec<Vec<u8>>) -> Vec<Vec<u8>> {
     vec![
         vec![state[0][0], state[3][1], state[2][2], state[1][3]],
         vec![state[1][0], state[0][1], state[3][2], state[2][3]],
@@ -219,11 +219,12 @@ fn inv_mix_columns(state: &Vec<Vec<u8>>) -> Vec<Vec<u8>> {
     ];
     let mut result = vec![vec![0; 4]; 4];
     for c in 0..4 {
-        for x in 0..4 {
-            result[c][x] = multiply_in_g(fixed_polynomial[x][0], state[c][0])
-                ^ multiply_in_g(fixed_polynomial[x][1], state[c][1])
-                ^ multiply_in_g(fixed_polynomial[x][2], state[c][2])
-                ^ multiply_in_g(fixed_polynomial[x][3], state[c][3]);
+        for r in 0..4 {
+            let mut multiplications_xor = 0;
+            for i in 0..4 {
+                multiplications_xor ^= multiply_in_g(fixed_polynomial[r][i], state[c][i])
+            }
+            result[c][r] = multiplications_xor
         }
     }
 
@@ -234,23 +235,23 @@ fn inv_mix_columns(state: &Vec<Vec<u8>>) -> Vec<Vec<u8>> {
 /// In the polynomial representation, multiplication in GF(2^8) (denoted by •) corresponds with the
 /// multiplication of polynomials modulo an irreducible polynomial of degree 8. A polynomial is
 /// irreducible if its only divisors are one and itself
-fn multiply_in_g(a: u8, b: u8) -> u8 {
+fn multiply_in_g(polynomial_value: u8, state_value: u8) -> u8 {
     let irreducible_polynomial = 0x1b;
-    let mut a_copy = a;
-    let mut b_copy = b;
+    let mut a = polynomial_value;
+    let mut b = state_value;
     let mut p = 0;
 
     for counter in 0..8 {
-        if (b_copy & 1) != 0 {
-            p ^= a_copy;
+        if (b & 1) != 0 {
+            p ^= a;
         }
 
-        let hi_bit_set = (a_copy & 0x80) != 0;
-        a_copy <<= 1;
+        let hi_bit_set = (a & 0x80) != 0;
+        a <<= 1;
         if hi_bit_set {
-            a_copy ^= irreducible_polynomial;
+            a ^= irreducible_polynomial;
         }
-        b_copy >>= 1;
+        b >>= 1;
     }
 
     p
@@ -261,7 +262,7 @@ fn multiply_in_g(a: u8, b: u8) -> u8 {
 fn rot_word(word: &[u8]) -> Vec<u8> {
     assert_eq!(word.len(), 4);
 
-    [word[1], word[2], word[3], word[0]].to_vec()
+    [&word[1..], &[word[0]]].concat()
 }
 
 /// Function used in the Key Expansion routine that takes a four-byte
@@ -270,8 +271,7 @@ fn rot_word(word: &[u8]) -> Vec<u8> {
 fn sub_word(word: &[u8]) -> Vec<u8> {
     assert_eq!(word.len(), 4);
 
-    [S_BOX[word[0] as usize], S_BOX[word[1] as usize], S_BOX[word[2] as usize], S_BOX[word[3] as
-        usize]].to_vec()
+    word.iter().map(|word| S_BOX[*word as usize]).collect()
 }
 
 #[cfg(test)]
@@ -388,7 +388,7 @@ mod tests {
             vec![0x3d, 0xca, 0x4e, 0xa7]
         ];
 
-        let actual_state = inv_shift_rows(state);
+        let actual_state = inv_shift_rows(&state);
 
         assert_eq!(actual_state, expected_state);
     }
@@ -408,7 +408,7 @@ mod tests {
             vec![0x8b, 0x10, 0xb6, 0x89]
         ];
 
-        let actual_state = inv_sub_bytes(state);
+        let actual_state = inv_sub_bytes(&state);
 
         assert_eq!(actual_state, expected_state);
     }

@@ -1,6 +1,7 @@
 extern crate core;
 extern crate rustc_serialize;
 
+mod hex;
 mod aes;
 mod macros;
 mod file_util;

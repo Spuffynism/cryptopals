@@ -1,9 +1,21 @@
 use std::fs;
 
 use ::vs;
+use hex;
+
+pub fn read_file_lines(path: &str) -> Vec<Vec<u8>> {
+    let content = fs::read_to_string(path).expect("Can't read file.");
+
+    content
+        .split("\n")
+        .map(|line| vs!(line))
+        .collect::<Vec<Vec<u8>>>()
+}
 
 pub fn read_hex_file_lines(path: &str) -> Vec<Vec<u8>> {
-    let content = fs::read_to_string("./resources/4.txt").expect("Can't read file.");
+    // TODO(nich): use string_to_bytes from set1
+    // TODO(nich): Create hex mod
+    let content = fs::read_to_string(path).expect("Can't read file.");
 
     content
         .split("\n")

@@ -1,5 +1,3 @@
-extern crate hex;
-
 use std::char;
 use std::str;
 use std::f32;
@@ -10,6 +8,7 @@ use ::vs;
 use xor;
 use file_util;
 use aes;
+use hex;
 
 static ALPHABET: [char; 74] = [
     '0', '1', '2', '3', '4', '5', '6', '7', '8', '9',
@@ -20,19 +19,11 @@ static ALPHABET: [char; 74] = [
     ',', ';', ':', '.', ' ', '\'', '\n', '\\', '/', '"', '\r', '-',
 ];
 
-pub fn hex_string_to_bytes(hex_input: &str) -> Vec<u8> {
-    hex::decode(hex_input).unwrap()
-}
-
-pub fn hex_to_bytes(hex_input: &Vec<u8>) -> Vec<u8> {
-    hex_string_to_bytes(String::from_utf8(hex_input.as_slice().to_vec()).unwrap().as_str())
-}
-
 pub fn hex_fixed_xor(hex_input: &Vec<u8>, hex_key: &Vec<u8>) -> Vec<u8> {
     assert_eq!(hex_input.len(), hex_key.len());
 
-    let input: Vec<u8> = hex_to_bytes(hex_input);
-    let key: Vec<u8> = hex_to_bytes(hex_key);
+    let input: Vec<u8> = hex::hex_to_bytes(hex_input);
+    let key: Vec<u8> = hex::hex_to_bytes(hex_key);
 
     return xor::fixed_xor(&input, &key);
 }
@@ -62,7 +53,7 @@ pub fn find_single_byte_xor(input: &Vec<u8>) -> (char, f32, Vec<u8>) {
 }
 
 pub fn hex_find_single_byte_xor(hex_input: &Vec<u8>) -> (char, f32, Vec<u8>) {
-    find_single_byte_xor(&hex_to_bytes(hex_input))
+    find_single_byte_xor(&hex::hex_to_bytes(hex_input))
 }
 
 fn calculate_human_resemblance_score(input: &Vec<u8>) -> f32 {
@@ -195,6 +186,19 @@ fn bits_difference_count(from: u8, to: u8) -> u8 {
     return distance;
 }
 
+fn detect_aes_in_ecb_mode(cipher_candidates: Vec<Vec<u8>>) -> Vec<u8> {
+    let mut ciphers_as_blocks: Vec<Vec<Vec<u8>>> = Vec::new();
+
+    for (i, cipher) in cipher_candidates.iter().enumerate() {
+        ciphers_as_blocks.push(vec![vec![0; 16]; cipher.len() / 16]);
+        for (j, byte) in cipher.iter().enumerate() {
+            ciphers_as_blocks[i][(j as f32 / 16 as f32).floor() as usize][j % 16] = *byte;
+        }
+    }
+
+    vec![]
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -205,7 +209,7 @@ mod tests {
             &vs!("49276d206b696c6c696e6720796f757220627261696e206c696b65206120706f69736f6e6f7573206d757368726f6f6d");
         let expected: &str = "SSdtIGtpbGxpbmcgeW91ciBicmFpbiBsaWtlIGEgcG9pc29ub3VzIG11c2hyb29t";
 
-        assert_eq!(hex_to_bytes(input).to_base64(STANDARD), expected)
+        assert_eq!(hex::hex_to_bytes(input).to_base64(STANDARD), expected)
     }
 
     #[test]
@@ -214,7 +218,7 @@ mod tests {
         let key: &Vec<u8> = &vs!("686974207468652062756c6c277320657965");
         let expected: &Vec<u8> = &vs!("746865206b696420646f6e277420706c6179");
 
-        assert_eq!(hex_fixed_xor(input, key), hex_to_bytes(expected))
+        assert_eq!(hex_fixed_xor(input, key), hex::hex_to_bytes(expected))
     }
 
     #[test]
@@ -230,11 +234,12 @@ mod tests {
 
     #[test]
     fn challenge4() {
-        let lines = file_util::read_hex_file_lines("./resources/4.txt");
+        let lines = file_util::read_file_lines("./resources/4.txt");
         let expected = vs!("7b5a4215415d544115415d5015455447414c155c46155f4058455c5b523f");
 
         let (key, score, xored_result, candidate) = find_most_human(lines);
 
+        println!("{:?}", String::from_utf8(xored_result));
         assert_eq!(candidate, expected);
     }
 
@@ -245,7 +250,7 @@ mod tests {
         let key = &vs!("ICE");
         let expected = &vs!("0b3637272a2b2e63622c2e69692a23693a2a3c6324202d623d63343c2a26226324272765272a282b2f20430a652e2c652a3124333a653e2b2027630c692b20283165286326302e27282f");
 
-        assert_eq!(xor::fixed_key_xor(content, key), hex_to_bytes(expected));
+        assert_eq!(xor::fixed_key_xor(content, key), hex::hex_to_bytes(expected));
     }
 
     #[test]
@@ -302,5 +307,14 @@ mod tests {
         let deciphered = aes::decrypt_aes_128_in_ecb_mode(cipher.as_slice(), key);
 
         println!("{:?}", String::from_utf8(deciphered));
+    }
+
+    #[test]
+    fn challenge8() {
+        let lines = file_util::read_file_lines("./resources/8.txt");
+
+        let found = detect_aes_in_ecb_mode(lines);
+
+        println!("{:?}", found);
     }
 }
