@@ -23,3 +23,13 @@ pub fn fixed_key_xor(input: &Vec<u8>, key: &Vec<u8>) -> Vec<u8> {
 
     return result;
 }
+
+/*pub fn fixed_key_xor_slice(input: &[u8], key: &[u8]) -> Vec<u8> {
+    let result: &mut [u8] = &mut vec![0; input.len()];
+
+    for (i, _) in input.iter().enumerate() {
+        result[i] = input[i] ^ key[i % key.len()];
+    }
+
+    result.to_vec()
+}*/

@@ -8,5 +8,6 @@ mod file_util;
 mod xor;
 
 mod set1;
+mod set2;
 
 fn main() {}
