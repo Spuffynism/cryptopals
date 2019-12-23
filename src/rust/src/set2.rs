@@ -1,25 +1,7 @@
 use ::vs;
 use rand::{RngCore, Rng, random};
 use aes;
-
-// TODO(nich): Move to pkcs7 mod
-pub fn pkcs7_pad(bytes: &Vec<u8>, to_length: u8) -> Vec<u8> {
-    assert!(bytes.len() < to_length as usize);
-    let mut padded = vec![0; to_length as usize];
-    let pad = to_length - bytes.len() as u8;
-
-    // copy initial bytes
-    for (i, byte) in bytes.iter().enumerate() {
-        padded[i] = *byte;
-    }
-
-    // pad remaining bytes with length of pad.
-    for i in bytes.len()..to_length as usize {
-        padded[i] = pad;
-    }
-
-    padded
-}
+use aes::BlockCipherMode;
 
 pub fn generate_aes_key() -> Vec<u8> {
     generate_bytes_for_length(16)
@@ -32,22 +14,55 @@ fn generate_bytes_for_length(length: u32) -> Vec<u8> {
     bytes
 }
 
-pub fn encrypt_under_random_key(content: Vec<u8>) -> Vec<u8> {
+pub fn encrypt_under_random_key(content: &Vec<u8>) -> (Vec<u8>, Vec<u8>, Vec<u8>, BlockCipherMode) {
     let key = generate_aes_key();
     let prefix = generate_bytes_for_length(rand::thread_rng().gen_range(5, 11));
     let suffix = generate_bytes_for_length(rand::thread_rng().gen_range(5, 11));
 
-    let padded_content = [prefix, content, suffix].concat();
+    let padded_content: Vec<u8> = [prefix.clone(), content.clone(), suffix.clone()].concat();
 
-    let mut mode = match rand::random() {
+    let mode = match rand::random() {
         true => aes::BlockCipherMode::ECB,
         false => {
-            let iv = vec![vec![0; 4]; 4];
+            // TODO(nich): Generate random iv
+            let iv = vec![vec![1; 4]; 4];
             aes::BlockCipherMode::CBC(iv)
         }
     };
 
-    aes::encrypt_aes_128(&padded_content, &key, &mode)
+    let cipher = aes::encrypt_aes_128(&padded_content, &key, &mode);
+
+    (padded_content, key, cipher, mode)
+}
+
+fn detect_block_cipher_mode(message: &Vec<u8>, key: &Vec<u8>, cipher: &Vec<u8>) -> BlockCipherMode {
+    let parts = aes::bytes_to_parts(&cipher);
+    if parts.len() < 2 {
+        panic!("Can't detect block cipher mode when cipher is less than 2 blocks long.");
+    }
+
+    let mut i = 0;
+    while i + 16 < message.len() {
+        let message_part = &message[i..i + 16].to_vec();
+        let encrypted_message_part = &aes::encrypt_aes_128(&message_part, &key,
+                                                           &BlockCipherMode::ECB);
+
+        let mut j = 0;
+        while j + 16 < cipher.len() {
+            let cipher_part = &cipher[j..j + 16].to_vec();
+
+            if cipher_part == encrypted_message_part {
+                return BlockCipherMode::ECB;
+            }
+
+            j += 1;
+        }
+
+
+        i += 1;
+    }
+
+    BlockCipherMode::CBC(vec![vec![0; 4]; 4])
 }
 
 #[cfg(test)]
@@ -63,7 +78,17 @@ mod tests {
         let desired_length = 20u8;
         let expected_result = [message.as_slice(), &[0x04, 0x04, 0x04, 0x04]].concat();
 
-        let actual_result = pkcs7_pad(&message, 20);
+        let actual_result = aes::pkcs7_pad(&message, 20);
+
+        assert_eq!(actual_result, expected_result);
+    }
+
+    #[test]
+    fn challenge9_no_padding_needed() {
+        let message = vs!("YELLOW SUBMARINE");
+        let expected_result = message.as_slice();
+
+        let actual_result = aes::pkcs7_pad(&message, 16);
 
         assert_eq!(actual_result, expected_result);
     }
@@ -91,5 +116,13 @@ mod tests {
     }
 
     #[test]
-    fn challenge11() {}
+    fn challenge11() {
+        let input = vs!("A random message to be encrypted.");
+        let (padded_content, key, cipher, expected_mode) =
+            &encrypt_under_random_key(&input);
+
+        let found_mode = &detect_block_cipher_mode(&padded_content, &key, &cipher);
+
+        assert_eq!(std::mem::discriminant(found_mode), std::mem::discriminant(expected_mode))
+    }
 }

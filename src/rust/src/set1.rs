@@ -248,7 +248,6 @@ mod tests {
 
         let (_key, _score, xored_result, candidate) = find_most_human(lines);
 
-        println!("{:?}", String::from_utf8(xored_result));
         assert_eq!(candidate, expected);
     }
 

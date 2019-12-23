@@ -75,6 +75,7 @@ static Rcon: [[u8; 4]; 10] = [
     [0x36, 0x00, 0x00, 0x00],
 ];
 
+#[derive(PartialEq, Debug)]
 pub enum BlockCipherMode {
     ECB,
     CBC(Vec<Vec<u8>>),
@@ -87,7 +88,7 @@ pub enum BlockCipherMode {
 /// the output as described in Sec. 3.4.
 pub fn encrypt_aes_128(bytes: &Vec<u8>, key: &Vec<u8>, mode: &BlockCipherMode) -> Vec<u8> {
     let w = key_expansion(key);
-    let mut parts = bytes_to_parts(bytes);
+    let parts = bytes_to_parts(bytes);
     let mut cipher_parts: Vec<Vec<u8>> = Vec::with_capacity(parts.len());
     let mut previous_state: Vec<Vec<u8>> = vec![vec![0; 4]; 4];
 
@@ -133,7 +134,7 @@ pub fn encrypt_aes_128(bytes: &Vec<u8>, key: &Vec<u8>, mode: &BlockCipherMode) -
 /// and AddRoundKey() – process the State and are described in the following subsections.
 pub fn decrypt_aes_128(cipher: &Vec<u8>, key: &Vec<u8>, mode: &BlockCipherMode) -> Vec<u8> {
     let w = key_expansion(key);
-    let mut parts = bytes_to_parts(cipher);
+    let parts = bytes_to_parts(cipher);
     let mut deciphered_parts: Vec<Vec<u8>> = Vec::with_capacity(parts.len());
     let mut previous_state: Vec<Vec<u8>> = vec![vec![0; 4]; 4];
 
@@ -179,13 +180,18 @@ fn xor_state(state: &Vec<Vec<u8>>, iv: &Vec<Vec<u8>>) -> Vec<Vec<u8>> {
     xored_state
 }
 
-fn bytes_to_parts(bytes: &Vec<u8>) -> Vec<Vec<u8>> {
-    let mut blocks = vec![vec![0; 16]; bytes.len() / 16];
+pub fn bytes_to_parts(bytes: &Vec<u8>) -> Vec<Vec<u8>> {
+    let mut parts = vec![vec![0; 16]; (bytes.len() as f32 / 16f32).ceil() as usize];
     for (i, byte) in bytes.iter().enumerate() {
-        blocks[(i as f32 / 16f32).floor() as usize][i % 16] = *byte;
+        parts[(i as f32 / 16f32).floor() as usize][i % 16] = *byte;
     }
 
-    blocks
+    if bytes.len() % 16 != 0 {
+        let last_part = parts.len() - 1;
+        parts[last_part] = pkcs7_pad(&parts[last_part][..bytes.len() % 16 as usize].to_vec(), 16);
+    }
+
+    parts
 }
 
 fn part_to_state(block: &Vec<u8>) -> Vec<Vec<u8>> {
@@ -383,6 +389,23 @@ fn sub_word(word: &[u8]) -> Vec<u8> {
     assert_eq!(word.len(), 4);
 
     word.iter().map(|word| S_BOX[*word as usize]).collect()
+}
+
+pub fn pkcs7_pad(bytes: &Vec<u8>, to_length: u8) -> Vec<u8> {
+    let mut padded = vec![0; to_length as usize];
+    let pad = to_length - bytes.len() as u8;
+
+    // copy initial bytes
+    for (i, byte) in bytes.iter().enumerate() {
+        padded[i] = *byte;
+    }
+
+    // pad remaining bytes with length of pad.
+    for i in bytes.len()..to_length as usize {
+        padded[i] = pad;
+    }
+
+    padded
 }
 
 #[cfg(test)]
