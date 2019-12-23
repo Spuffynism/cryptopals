@@ -10,6 +10,12 @@ pub fn read_file_lines(path: &str) -> Vec<Vec<u8>> {
         .collect::<Vec<Vec<u8>>>()
 }
 
+pub fn read_file_bytes(path: &str) -> Vec<u8> {
+    read_file_lines(path)
+        .iter()
+        .fold(Vec::new(), |acc, line| [acc.as_slice(), line.as_slice()].concat())
+}
+
 pub fn read_hex_file_lines(path: &str) -> Vec<Vec<u8>> {
     read_resource_lines(path)
         .iter()

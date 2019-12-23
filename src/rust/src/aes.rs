@@ -1,6 +1,7 @@
 /// Resources used:
 /// https://csrc.nist.gov/csrc/media/publications/fips/197/final/documents/fips-197.pdf
 /// https://en.wikipedia.org/wiki/Rijndael_MixColumns#Implementation_example
+/// https://en.wikipedia.org/wiki/Block_cipher_mode_of_operation
 
 use xor;
 
@@ -74,6 +75,11 @@ static Rcon: [[u8; 4]; 10] = [
     [0x36, 0x00, 0x00, 0x00],
 ];
 
+pub enum BlockCipherMode {
+    ECB,
+    CBC(Vec<Vec<u8>>),
+}
+
 /// At the start of the Cipher, the input is copied to the State array using the conventions
 /// described in Sec. 3.4. After an initial Round Key addition, the State array is transformed by
 /// implementing a round function 10, 12, or 14 times (depending on the key length), with the
@@ -81,11 +87,11 @@ static Rcon: [[u8; 4]; 10] = [
 /// the output as described in Sec. 3.4.
 pub fn encrypt_aes_128_in_ecb_mode(bytes: &Vec<u8>, key: &Vec<u8>) -> Vec<u8> {
     let w = key_expansion(key);
-    let mut blocks = bytes_to_blocks(bytes);
-    let mut cipher_blocks: Vec<Vec<u8>> = Vec::with_capacity(blocks.len());
+    let mut parts = bytes_to_parts(bytes);
+    let mut cipher_parts: Vec<Vec<u8>> = Vec::with_capacity(parts.len());
 
-    for block in blocks.iter() {
-        let mut state = block_to_state(block);
+    for (i, part) in parts.iter().enumerate() {
+        let mut state = part_to_state(part);
 
         state = add_round_key(&state, &w[0..Nb].to_vec());
 
@@ -100,10 +106,10 @@ pub fn encrypt_aes_128_in_ecb_mode(bytes: &Vec<u8>, key: &Vec<u8>) -> Vec<u8> {
         state = shift_rows(&state);
         state = add_round_key(&state, &w[Nr * Nb..(Nr + 1) * Nb].to_vec());
 
-        cipher_blocks.push(state_to_block(&state));
+        cipher_parts.push(state_to_block(&state));
     }
 
-    cipher_blocks.iter()
+    cipher_parts.iter()
         .fold(Vec::new(), |acc, line| [acc.as_slice(), line.as_slice()].concat())
 }
 
@@ -111,13 +117,14 @@ pub fn encrypt_aes_128_in_ecb_mode(bytes: &Vec<u8>, key: &Vec<u8>) -> Vec<u8> {
 /// produce a straightforward Inverse Cipher for the AES algorithm. The individual transformations
 /// used in the Inverse Cipher - InvShiftRows(), InvSubBytes(),InvMixColumns(),
 /// and AddRoundKey() – process the State and are described in the following subsections.
-pub fn decrypt_aes_128_in_ecb_mode(cipher: &Vec<u8>, key: &Vec<u8>) -> Vec<u8> {
+pub fn decrypt_aes_128(cipher: &Vec<u8>, key: &Vec<u8>, mode: &BlockCipherMode) -> Vec<u8> {
     let w = key_expansion(key);
-    let mut blocks = bytes_to_blocks(cipher);
-    let mut decrypted_blocks: Vec<Vec<u8>> = Vec::with_capacity(blocks.len());
+    let mut parts = bytes_to_parts(cipher);
+    let mut deciphered_parts: Vec<Vec<u8>> = Vec::with_capacity(parts.len());
+    let mut previous_state: Vec<Vec<u8>> = Vec::new();
 
-    for block in blocks.iter() {
-        let mut state = block_to_state(block);
+    for (i, part) in parts.iter().enumerate() {
+        let mut state = part_to_state(part);
 
         state = add_round_key(&state, &w[Nr * Nb..(Nr + 1) * Nb].to_vec());
 
@@ -132,23 +139,42 @@ pub fn decrypt_aes_128_in_ecb_mode(cipher: &Vec<u8>, key: &Vec<u8>) -> Vec<u8> {
         state = inv_sub_bytes(&state);
         state = add_round_key(&state, &w[0..Nb].to_vec());
 
-        decrypted_blocks.push(state_to_block(&state));
+        match mode {
+            BlockCipherMode::CBC(iv) => {
+                state = xor_state(&state, if i == 0 { &iv } else { &previous_state });
+                previous_state = part_to_state(part);
+            }
+            BlockCipherMode::ECB => {}
+        }
+
+        deciphered_parts.push(state_to_block(&state));
     }
 
-    decrypted_blocks.iter()
+    deciphered_parts.iter()
         .fold(Vec::new(), |acc, line| [acc.as_slice(), line.as_slice()].concat())
 }
 
-fn bytes_to_blocks(bytes: &Vec<u8>) -> Vec<Vec<u8>> {
+fn xor_state(state: &Vec<Vec<u8>>, iv: &Vec<Vec<u8>>) -> Vec<Vec<u8>> {
+    let mut xored_state: Vec<Vec<u8>> = vec![vec![0; 4]; 4];
+    for i in 0..4 {
+        for j in 0..Nb {
+            xored_state[i][j] = state[i][j] ^ iv[i][j];
+        }
+    }
+
+    xored_state
+}
+
+fn bytes_to_parts(bytes: &Vec<u8>) -> Vec<Vec<u8>> {
     let mut blocks = vec![vec![0; 16]; bytes.len() / 16];
     for (i, byte) in bytes.iter().enumerate() {
-        blocks[(i as f32 / 16 as f32).floor() as usize][i % 16] = *byte;
+        blocks[(i as f32 / 16f32).floor() as usize][i % 16] = *byte;
     }
 
     blocks
 }
 
-fn block_to_state(block: &Vec<u8>) -> Vec<Vec<u8>> {
+fn part_to_state(block: &Vec<u8>) -> Vec<Vec<u8>> {
     let mut state: Vec<Vec<u8>> = vec![vec![0; 4]; 4];
     for r in 0..4 {
         for c in 0..Nb {
@@ -569,7 +595,7 @@ mod tests {
             0x88, 0x99, 0xaa, 0xbb,
             0xcc, 0xdd, 0xee, 0xff
         ];
-        let actual_raw = decrypt_aes_128_in_ecb_mode(&cipher, &key);
+        let actual_raw = decrypt_aes_128(&cipher, &key, &BlockCipherMode::ECB);
 
         assert_eq!(actual_raw, expected_raw);
     }
@@ -614,7 +640,7 @@ mod tests {
             0x0c, 0x0d, 0x0e, 0x0f
         ];
         let cipher = encrypt_aes_128_in_ecb_mode(&raw, &key);
-        let actual_deciphered = decrypt_aes_128_in_ecb_mode(&cipher, &key);
+        let actual_deciphered = decrypt_aes_128(&cipher, &key, &BlockCipherMode::ECB);
 
         assert_eq!(raw, actual_deciphered);
     }

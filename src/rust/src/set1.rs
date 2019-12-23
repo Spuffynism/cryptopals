@@ -210,7 +210,7 @@ fn detect_aes_in_ecb_mode(cipher_candidates: Vec<Vec<u8>>) -> Vec<u8> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use aes::decrypt_aes_128_in_ecb_mode;
+    use aes::{decrypt_aes_128, BlockCipherMode};
 
     #[test]
     fn challenge1() {
@@ -305,7 +305,7 @@ mod tests {
 
         let (_key, deciphered) = break_repeating_key_xor(cipher, 2, 40);
 
-        println!("{:?}", String::from_utf8(deciphered));
+        assert!(deciphered.starts_with(&vs!("I'm back and I'm ringin' the bell")));
     }
 
     #[test]
@@ -313,9 +313,9 @@ mod tests {
         let cipher = &file_util::read_base64_file_bytes("./resources/7.txt");
         let key = &vs!("YELLOW SUBMARINE");
 
-        let deciphered = aes::decrypt_aes_128_in_ecb_mode(cipher, key);
+        let deciphered = aes::decrypt_aes_128(cipher, key, &BlockCipherMode::ECB);
 
-        println!("{:?}", String::from_utf8(deciphered));
+        assert!(deciphered.starts_with(&vs!("I'm back and I'm ringin' the bell")));
     }
 
     #[test]
@@ -326,8 +326,8 @@ mod tests {
 
         let actual_found = detect_aes_in_ecb_mode(lines);
 
-        let deciphered = decrypt_aes_128_in_ecb_mode(&actual_found, key);
-        println!("{:?}", String::from_utf8(deciphered));
+        let deciphered = decrypt_aes_128(&actual_found, key, &BlockCipherMode::ECB);
+
         assert_eq!(actual_found, expected);
     }
 }
