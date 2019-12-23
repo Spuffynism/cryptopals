@@ -85,13 +85,20 @@ pub enum BlockCipherMode {
 /// implementing a round function 10, 12, or 14 times (depending on the key length), with the
 /// final round differing slightly from the first Nr -1 rounds. The final State is then copied to
 /// the output as described in Sec. 3.4.
-pub fn encrypt_aes_128_in_ecb_mode(bytes: &Vec<u8>, key: &Vec<u8>) -> Vec<u8> {
+pub fn encrypt_aes_128(bytes: &Vec<u8>, key: &Vec<u8>, mode: &BlockCipherMode) -> Vec<u8> {
     let w = key_expansion(key);
     let mut parts = bytes_to_parts(bytes);
     let mut cipher_parts: Vec<Vec<u8>> = Vec::with_capacity(parts.len());
+    let mut previous_state: Vec<Vec<u8>> = vec![vec![0; 4]; 4];
 
     for (i, part) in parts.iter().enumerate() {
         let mut state = part_to_state(part);
+        match mode {
+            BlockCipherMode::CBC(iv) => {
+                state = xor_state(&state, if i == 0 { &iv } else { &previous_state });
+            }
+            BlockCipherMode::ECB => ()
+        }
 
         state = add_round_key(&state, &w[0..Nb].to_vec());
 
@@ -105,6 +112,13 @@ pub fn encrypt_aes_128_in_ecb_mode(bytes: &Vec<u8>, key: &Vec<u8>) -> Vec<u8> {
         state = sub_bytes(&state);
         state = shift_rows(&state);
         state = add_round_key(&state, &w[Nr * Nb..(Nr + 1) * Nb].to_vec());
+
+        match mode {
+            BlockCipherMode::CBC(iv) => {
+                previous_state = state.clone();
+            }
+            BlockCipherMode::ECB => ()
+        }
 
         cipher_parts.push(state_to_block(&state));
     }
@@ -121,7 +135,7 @@ pub fn decrypt_aes_128(cipher: &Vec<u8>, key: &Vec<u8>, mode: &BlockCipherMode) 
     let w = key_expansion(key);
     let mut parts = bytes_to_parts(cipher);
     let mut deciphered_parts: Vec<Vec<u8>> = Vec::with_capacity(parts.len());
-    let mut previous_state: Vec<Vec<u8>> = Vec::new();
+    let mut previous_state: Vec<Vec<u8>> = vec![vec![0; 4]; 4];
 
     for (i, part) in parts.iter().enumerate() {
         let mut state = part_to_state(part);
@@ -144,7 +158,7 @@ pub fn decrypt_aes_128(cipher: &Vec<u8>, key: &Vec<u8>, mode: &BlockCipherMode) 
                 state = xor_state(&state, if i == 0 { &iv } else { &previous_state });
                 previous_state = part_to_state(part);
             }
-            BlockCipherMode::ECB => {}
+            BlockCipherMode::ECB => ()
         }
 
         deciphered_parts.push(state_to_block(&state));
@@ -620,18 +634,18 @@ mod tests {
             0xd8, 0xcd, 0xb7, 0x80,
             0x70, 0xb4, 0xc5, 0x5a
         ];
-        let actual_cipher = encrypt_aes_128_in_ecb_mode(&raw, &key);
+        let actual_cipher = encrypt_aes_128(&raw, &key, &BlockCipherMode::ECB);
 
         assert_eq!(actual_cipher, expected_cipher);
     }
 
     #[test]
-    fn encrypt_and_decrypt() {
+    fn encrypt_and_decrypt_ecb() {
         let raw = vec![
             0x0, 0x11, 0x22, 0x33,
             0x44, 0x55, 0x66, 0x77,
             0x88, 0x99, 0xaa, 0xbb,
-            0xcc, 0xdd, 0xee, 0xff
+            0xcc, 0xdd, 0xee, 0xff,
         ];
         let key = vec![
             0x00, 0x01, 0x02, 0x03,
@@ -639,8 +653,34 @@ mod tests {
             0x08, 0x09, 0x0a, 0x0b,
             0x0c, 0x0d, 0x0e, 0x0f
         ];
-        let cipher = encrypt_aes_128_in_ecb_mode(&raw, &key);
+        let cipher = encrypt_aes_128(&raw, &key, &BlockCipherMode::ECB);
         let actual_deciphered = decrypt_aes_128(&cipher, &key, &BlockCipherMode::ECB);
+
+        assert_eq!(raw, actual_deciphered);
+    }
+
+    #[test]
+    fn encrypt_and_decrypt_cbc() {
+        let raw = vec![
+            0x0, 0x11, 0x22, 0x33,
+            0x44, 0x55, 0x66, 0x77,
+            0x88, 0x99, 0xaa, 0xbb,
+            0xcc, 0xdd, 0xee, 0xff,
+            // use multiple blocks to test xor chaining
+            0x0, 0x11, 0x22, 0x33,
+            0x44, 0x55, 0x66, 0x77,
+            0x88, 0x99, 0xaa, 0xbb,
+            0xcc, 0xdd, 0xee, 0xff,
+        ];
+        let key = vec![
+            0x00, 0x01, 0x02, 0x03,
+            0x04, 0x05, 0x06, 0x07,
+            0x08, 0x09, 0x0a, 0x0b,
+            0x0c, 0x0d, 0x0e, 0x0f
+        ];
+        // TODO(nich): Use a randomly generated iv
+        let cipher = encrypt_aes_128(&raw, &key, &BlockCipherMode::CBC(vec![vec![1u8; 4]; 4]));
+        let actual_deciphered = decrypt_aes_128(&cipher, &key, &BlockCipherMode::CBC(vec![vec![1u8; 4]; 4]));
 
         assert_eq!(raw, actual_deciphered);
     }
