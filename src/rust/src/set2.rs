@@ -4,6 +4,7 @@ use aes;
 use aes::BlockCipherMode;
 use human;
 use std::collections::{HashSet, HashMap};
+use std::ops::Range;
 
 pub fn generate_aes_key() -> Vec<u8> {
     generate_bytes_for_length(16)
@@ -50,19 +51,19 @@ fn detect_block_cipher_mode(cipher: &Vec<u8>) -> BlockCipherMode {
     if unique_chunks.len() < chunks_count { BlockCipherMode::ECB } else { BlockCipherMode::CBC(vec![vec![0; 4]; 4]) }
 }
 
-pub fn byte_at_a_time_ecb_decryption(unknown_string: &Vec<u8>, key: &Vec<u8>) -> Vec<u8> {
+pub fn byte_at_a_time_ecb_decryption<O>(oracle: O) -> Vec<u8> where O: Fn(&Vec<u8>) -> Vec<u8> {
     let mut block_size = 0;
     let block_size_range = 1..64;
     let placeholder_byte = 'A' as u8;
 
-    // detect block size
+    // detect the block size
     for possible_block_size in block_size_range {
         let repeated_bytes = vec![placeholder_byte; possible_block_size * 2];
-        let plaintext = [repeated_bytes.as_slice(), unknown_string.as_slice()].concat();
-        let cipher = aes::encrypt_aes_128(&plaintext, &key, &aes::BlockCipherMode::ECB);
 
-        let known_chars_slice = &cipher[..possible_block_size].to_vec();
-        let expected_cipher_slice = &cipher[possible_block_size..possible_block_size * 2].to_vec();
+        let cipher = oracle(&repeated_bytes);
+
+        let known_chars_slice = &cipher[..possible_block_size];
+        let expected_cipher_slice = &cipher[possible_block_size..possible_block_size * 2];
 
         if known_chars_slice == expected_cipher_slice {
             block_size = possible_block_size;
@@ -70,38 +71,47 @@ pub fn byte_at_a_time_ecb_decryption(unknown_string: &Vec<u8>, key: &Vec<u8>) ->
         }
     }
 
-    println!("block size{}", block_size);
-
-    // confirm ECB mode detection
+    // confirm that the cipher is in ECB mode
     let repeated_bytes = vec![placeholder_byte; block_size * 8];
-    let cipher_repeated_bytes = aes::encrypt_aes_128(&repeated_bytes, &key, &aes::BlockCipherMode::ECB);
+    let cipher_repeated_bytes = oracle(&repeated_bytes);
 
     let detected_block_cipher_mode = detect_block_cipher_mode(&cipher_repeated_bytes);
     if detected_block_cipher_mode != BlockCipherMode::ECB {
         panic!("Wrong block cipher mode.");
     }
 
+    // brute-force cipher characters one-by-one by using crafted input
     let mut known_characters = Vec::new();
-    let block_count = unknown_string.len() / block_size;
+    let empty_vec = vec![];
+    let block_count = oracle(&empty_vec).len() / block_size;
     for current_block_index in 0..block_count {
         for position_in_block in 0..block_size {
-            // populate last-byte character map
+            let start_of_block = current_block_index * block_size;
+            let current_block_range = start_of_block..start_of_block + block_size;
+
+            // craft one-byte short block used for the map
             let short_crafted_block = craft_short_block(block_size, &placeholder_byte, &known_characters);
+
+            // populate last-byte character map
             let mut last_byte_map = populate_last_byte_map(
-                &short_crafted_block,
-                &key,
-                &known_characters,
-                current_block_index,
+                &[&short_crafted_block[..], &known_characters[..]].concat(),
+                &oracle,
+                &current_block_range,
             );
 
-            // find actual content using map
-            let crafted_input = [short_crafted_block.as_slice(), &unknown_string.as_slice()].concat();
-            let ciphered_crafted_input = aes::encrypt_aes_128(&crafted_input, &key,
-                                                              &aes::BlockCipherMode::ECB);
+            let ciphered_crafted_input = oracle(&short_crafted_block);
 
-            let current_block = &ciphered_crafted_input[..(current_block_index
-                * block_size) + block_size].to_vec();
-            known_characters.push(*last_byte_map.get(current_block).unwrap());
+            // get the block for which we have a correspondence in the map
+            let current_block = &ciphered_crafted_input[current_block_range].to_vec();
+            match last_byte_map.get(current_block) {
+                None => {
+                    // non-human or padding character was encountered
+                    break;
+                }
+                Some(character) => {
+                    known_characters.push(*character);
+                }
+            }
         }
     }
 
@@ -113,20 +123,19 @@ fn craft_short_block(block_size: usize, placeholder_byte: &u8, known_characters:
     vec![*placeholder_byte; block_size - (known_characters.len() % block_size) - 1]
 }
 
-fn populate_last_byte_map(short_crafted_block: &Vec<u8>, key: &Vec<u8>,
-                          known_characters: &Vec<u8>,
-                          current_block_index: usize) ->
-                          HashMap<Vec<u8>, u8> {
+fn populate_last_byte_map<O>(block: &Vec<u8>,
+                             oracle: O,
+                             current_block_range: &Range<usize>) ->
+                             HashMap<Vec<u8>, u8> where O: Fn(&Vec<u8>) -> Vec<u8> {
     let mut last_byte_map: HashMap<Vec<u8>, u8> = HashMap::new();
     for character in human::ALPHABET.iter() {
         let crafted_block = [
-            &short_crafted_block[..],
-            &known_characters[..],
+            &block[..],
             &[*character as u8]
         ].concat();
-        let ciphered_crafted_block = aes::encrypt_aes_128(&crafted_block, &key,
-                                                          &aes::BlockCipherMode::ECB);
-        last_byte_map.insert(ciphered_crafted_block, *character as u8);
+        let ciphered_crafted_block = oracle(&crafted_block);
+        let key = ciphered_crafted_block[current_block_range.start..current_block_range.end].to_vec();
+        last_byte_map.insert(key, *character as u8);
     }
 
     last_byte_map
@@ -181,13 +190,13 @@ mod tests {
 
     #[test]
     fn challenge11() {
-        for i in 0..100 {
+        for _i in 0..100 {
             let repeated_bytes = generate_bytes_for_length(16);
             let mut input = Vec::with_capacity(16 * 8);
-            for i in 0..(16 * 8) {
+            for j in 0..(16 * 8) {
                 // the input repeats the repeated bytes, in order
                 // (i.e.: 1, 2, 3, 4, 1, 2, 3, 4, 1, 2, 3, 4 , ...)
-                input.push(repeated_bytes[(i % repeated_bytes.len()) as usize]);
+                input.push(repeated_bytes[(j % repeated_bytes.len()) as usize]);
             }
             let (cipher, expected_mode) = &encrypt_under_random_key(&input);
 
@@ -200,9 +209,16 @@ mod tests {
     #[test]
     fn challenge12() {
         let unknown_string = file_util::read_base64_file_bytes("./resources/12.txt");
-        let content = byte_at_a_time_ecb_decryption(&unknown_string, &generate_aes_key());
+        let key = generate_aes_key();
+        let oracle = |crafted_input: &Vec<u8>| -> Vec<u8> {
+            let input = &[&crafted_input[..], &unknown_string[..]].concat();
 
-        println!("{:?}", String::from_utf8(content));
+            aes::encrypt_aes_128(&input, &key, &aes::BlockCipherMode::ECB)
+        };
+        let deciphered = byte_at_a_time_ecb_decryption(oracle);
+
+        assert!(deciphered.starts_with(&vs!("Rollin' in my 5.0\nWith")));
+        assert!(deciphered.ends_with(&vs!("No, I just drove by\n")));
     }
 
     /*#[test]
