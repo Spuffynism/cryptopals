@@ -57,19 +57,20 @@ pub fn byte_at_a_time_ecb_decryption(unknown_string: &Vec<u8>, key: &Vec<u8>) ->
 
     // detect block size
     for possible_block_size in block_size_range {
-        let repeated_bytes = vec![placeholder_byte; possible_block_size];
+        let repeated_bytes = vec![placeholder_byte; possible_block_size * 2];
         let plaintext = [repeated_bytes.as_slice(), unknown_string.as_slice()].concat();
         let cipher = aes::encrypt_aes_128(&plaintext, &key, &aes::BlockCipherMode::ECB);
 
-        let known_chars_slice = &cipher[..possible_block_size];
-        let expected_cipher_slice = aes::encrypt_aes_128(&repeated_bytes, &key,
-                                                         &aes::BlockCipherMode::ECB);
+        let known_chars_slice = &cipher[..possible_block_size].to_vec();
+        let expected_cipher_slice = &cipher[possible_block_size..possible_block_size * 2].to_vec();
 
-        if known_chars_slice == expected_cipher_slice.as_slice() {
+        if known_chars_slice == expected_cipher_slice {
             block_size = possible_block_size;
             break;
         }
     }
+
+    println!("block size{}", block_size);
 
     // confirm ECB mode detection
     let repeated_bytes = vec![placeholder_byte; block_size * 8];
