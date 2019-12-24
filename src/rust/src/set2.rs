@@ -3,7 +3,7 @@ use rand::{RngCore, Rng};
 use aes;
 use aes::BlockCipherMode;
 use human;
-use std::collections::HashSet;
+use std::collections::{HashSet, HashMap};
 
 pub fn generate_aes_key() -> Vec<u8> {
     generate_bytes_for_length(16)
@@ -40,24 +40,69 @@ pub fn encrypt_under_random_key(content: &Vec<u8>) -> (Vec<u8>, BlockCipherMode)
 fn detect_block_cipher_mode(cipher: &Vec<u8>) -> BlockCipherMode {
     let chunks = cipher.chunks(16);
     let chunks_count = chunks.len();
+
     if chunks_count < 2 {
         panic!("Can't detect block cipher mode when cipher is less than 2 blocks long.");
     }
 
     let unique_chunks = &chunks.into_iter().collect::<HashSet<&[u8]>>();
 
-    if chunks_count < unique_chunks.len() { BlockCipherMode::ECB } else { BlockCipherMode::CBC(vec![vec![0; 4]; 4]) }
+    if unique_chunks.len() < chunks_count { BlockCipherMode::ECB } else { BlockCipherMode::CBC(vec![vec![0; 4]; 4]) }
 }
 
-/*pub fn byte_at_a_time_ecb_decryption(unknown_string: &Vec<u8>, key: &Vec<u8>) -> Vec<u8> {
-    for char in human::ALPHABET.iter() {
-        let block_size;
+pub fn byte_at_a_time_ecb_decryption(unknown_string: &Vec<u8>, key: &Vec<u8>) -> Vec<u8> {
+    let mut block_size = 0;
+    let block_size_range = 1..64;
+    let test_byte = 'A' as u8;
 
-        for i in
+    // detect block size
+    for possible_block_size in block_size_range {
+        let repeated_bytes = vec![test_byte; possible_block_size];
+        let plaintext = [repeated_bytes.as_slice(), unknown_string.as_slice()].concat();
+        let cipher = aes::encrypt_aes_128(&plaintext, &key, &aes::BlockCipherMode::ECB);
+
+        let known_chars_slice = &cipher[..possible_block_size];
+        let expected_cipher_slice = aes::encrypt_aes_128(&repeated_bytes, &key,
+                                                         &aes::BlockCipherMode::ECB);
+
+        if known_chars_slice == expected_cipher_slice.as_slice() {
+            block_size = possible_block_size;
+            break;
+        }
     }
 
-    vec![]
-}*/
+    // confirm ECB mode detection
+    let repeated_bytes = vec![test_byte; block_size * 8];
+    let cipher_repeated_bytes = aes::encrypt_aes_128(&repeated_bytes, &key, &aes::BlockCipherMode::ECB);
+
+    let detected_block_cipher_mode = detect_block_cipher_mode(&cipher_repeated_bytes);
+    if detected_block_cipher_mode != BlockCipherMode::ECB {
+        panic!("Wrong block cipher mode.");
+    }
+
+    // populate last-byte character map
+    let mut last_byte_map: HashMap<u8, u8> = HashMap::new();
+    for i in human::ALPHABET.iter() {
+        let crafted_block = [vec![test_byte; block_size - 1].as_slice(), &[*i as u8]].concat();
+        let ciphered_crafted_block = aes::encrypt_aes_128(&crafted_block, &key,
+                                                          &aes::BlockCipherMode::ECB);
+        last_byte_map.insert(ciphered_crafted_block[block_size - 1], *i as u8);
+    }
+
+    // find actual content using map
+    let one_byte_short_block = vec![test_byte; block_size - 1];
+    let mut actual_content = vec![0; unknown_string.len()];
+    for i in 0..unknown_string.len() {
+        let crafted_block = [one_byte_short_block.as_slice(), &unknown_string[i..i + 1]].concat();
+        let ciphered_crafted_block = aes::encrypt_aes_128(&crafted_block, &key,
+                                                          &aes::BlockCipherMode::ECB);
+        let first_block = &ciphered_crafted_block[..block_size].to_vec();
+
+        actual_content[i] = *last_byte_map.get(&first_block[block_size - 1]).unwrap();
+    }
+
+    actual_content
+}
 
 #[cfg(test)]
 mod tests {
@@ -108,17 +153,35 @@ mod tests {
 
     #[test]
     fn challenge11() {
-        let input = vec![0u8; 16 * 8];
-        let (cipher, expected_mode) = &encrypt_under_random_key(&input);
+        for i in 0..100 {
+            let repeated_bytes = generate_bytes_for_length(16);
+            let mut input = Vec::with_capacity(16 * 8);
+            for i in 0..(16 * 8) {
+                // the input repeats the repeated bytes, in order
+                // (i.e.: 1, 2, 3, 4, 1, 2, 3, 4, 1, 2, 3, 4 , ...)
+                input.push(repeated_bytes[(i % repeated_bytes.len()) as usize]);
+            }
+            let (cipher, expected_mode) = &encrypt_under_random_key(&input);
 
-        let found_mode = &detect_block_cipher_mode(&cipher);
+            let found_mode = &detect_block_cipher_mode(&cipher);
 
-        assert_eq!(std::mem::discriminant(found_mode), std::mem::discriminant(expected_mode))
+            assert_eq!(std::mem::discriminant(found_mode), std::mem::discriminant(expected_mode))
+        }
     }
 
     #[test]
     fn challenge12() {
         let unknown_string = file_util::read_base64_file_bytes("./resources/12.txt");
-        //byte_at_a_time_ecb_decryption(&unknown_string, &generate_aes_key());
+        let content = byte_at_a_time_ecb_decryption(&unknown_string, &generate_aes_key());
+
+        println!("{:?}", String::from_utf8(content));
+    }
+
+    #[test]
+    fn repl() {
+        let x = vec![0; 4];
+        println!("{:?}", x);
+        let slice = &x[0..1];
+        println!("{:?}", slice);
     }
 }
