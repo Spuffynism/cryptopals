@@ -52,7 +52,7 @@ fn calculate_human_resemblance_score(input: &Vec<u8>) -> f32 {
     let mut human_characters_count = 0;
 
     for letter in input.iter() {
-        if human::ALPHABET.contains(&char::from_u32(*letter as u32).unwrap()) {
+        if human::ALPHABET.contains(&(*letter as char)) {
             human_characters_count += 1;
         }
     }
@@ -294,7 +294,7 @@ mod tests {
     fn challenge6() {
         let cipher = &file_util::read_base64_file_bytes("./resources/6.txt");
 
-        let (_key, deciphered) = break_repeating_key_xor(cipher, 2, 40);
+        let (_key, deciphered) = &break_repeating_key_xor(cipher, 2, 40);
 
         assert!(deciphered.starts_with(&vs!("I'm back and I'm ringin' the bell")));
     }

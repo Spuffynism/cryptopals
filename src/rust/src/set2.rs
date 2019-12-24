@@ -53,11 +53,11 @@ fn detect_block_cipher_mode(cipher: &Vec<u8>) -> BlockCipherMode {
 pub fn byte_at_a_time_ecb_decryption(unknown_string: &Vec<u8>, key: &Vec<u8>) -> Vec<u8> {
     let mut block_size = 0;
     let block_size_range = 1..64;
-    let test_byte = 'A' as u8;
+    let placeholder_byte = 'A' as u8;
 
     // detect block size
     for possible_block_size in block_size_range {
-        let repeated_bytes = vec![test_byte; possible_block_size];
+        let repeated_bytes = vec![placeholder_byte; possible_block_size];
         let plaintext = [repeated_bytes.as_slice(), unknown_string.as_slice()].concat();
         let cipher = aes::encrypt_aes_128(&plaintext, &key, &aes::BlockCipherMode::ECB);
 
@@ -72,7 +72,7 @@ pub fn byte_at_a_time_ecb_decryption(unknown_string: &Vec<u8>, key: &Vec<u8>) ->
     }
 
     // confirm ECB mode detection
-    let repeated_bytes = vec![test_byte; block_size * 8];
+    let repeated_bytes = vec![placeholder_byte; block_size * 8];
     let cipher_repeated_bytes = aes::encrypt_aes_128(&repeated_bytes, &key, &aes::BlockCipherMode::ECB);
 
     let detected_block_cipher_mode = detect_block_cipher_mode(&cipher_repeated_bytes);
@@ -80,28 +80,55 @@ pub fn byte_at_a_time_ecb_decryption(unknown_string: &Vec<u8>, key: &Vec<u8>) ->
         panic!("Wrong block cipher mode.");
     }
 
-    // populate last-byte character map
-    let mut last_byte_map: HashMap<u8, u8> = HashMap::new();
-    for i in human::ALPHABET.iter() {
-        let crafted_block = [vec![test_byte; block_size - 1].as_slice(), &[*i as u8]].concat();
-        let ciphered_crafted_block = aes::encrypt_aes_128(&crafted_block, &key,
-                                                          &aes::BlockCipherMode::ECB);
-        last_byte_map.insert(ciphered_crafted_block[block_size - 1], *i as u8);
+    let mut known_characters = Vec::new();
+    let block_count = unknown_string.len() / block_size;
+    for current_block_index in 0..block_count {
+        for position_in_block in 0..block_size {
+            // populate last-byte character map
+            let short_crafted_block = craft_short_block(block_size, &placeholder_byte, &known_characters);
+            let mut last_byte_map = populate_last_byte_map(
+                &short_crafted_block,
+                &key,
+                &known_characters,
+                current_block_index,
+            );
+
+            // find actual content using map
+            let crafted_input = [short_crafted_block.as_slice(), &unknown_string.as_slice()].concat();
+            let ciphered_crafted_input = aes::encrypt_aes_128(&crafted_input, &key,
+                                                              &aes::BlockCipherMode::ECB);
+
+            let current_block = &ciphered_crafted_input[..(current_block_index
+                * block_size) + block_size].to_vec();
+            known_characters.push(*last_byte_map.get(current_block).unwrap());
+        }
     }
 
-    // find actual content using map
-    let one_byte_short_block = vec![test_byte; block_size - 1];
-    let mut actual_content = vec![0; unknown_string.len()];
-    for i in 0..unknown_string.len() {
-        let crafted_block = [one_byte_short_block.as_slice(), &unknown_string[i..i + 1]].concat();
+    known_characters
+}
+
+fn craft_short_block(block_size: usize, placeholder_byte: &u8, known_characters: &Vec<u8>)
+                     -> Vec<u8> {
+    vec![*placeholder_byte; block_size - (known_characters.len() % block_size) - 1]
+}
+
+fn populate_last_byte_map(short_crafted_block: &Vec<u8>, key: &Vec<u8>,
+                          known_characters: &Vec<u8>,
+                          current_block_index: usize) ->
+                          HashMap<Vec<u8>, u8> {
+    let mut last_byte_map: HashMap<Vec<u8>, u8> = HashMap::new();
+    for character in human::ALPHABET.iter() {
+        let crafted_block = [
+            &short_crafted_block[..],
+            &known_characters[..],
+            &[*character as u8]
+        ].concat();
         let ciphered_crafted_block = aes::encrypt_aes_128(&crafted_block, &key,
                                                           &aes::BlockCipherMode::ECB);
-        let first_block = &ciphered_crafted_block[..block_size].to_vec();
-
-        actual_content[i] = *last_byte_map.get(&first_block[block_size - 1]).unwrap();
+        last_byte_map.insert(ciphered_crafted_block, *character as u8);
     }
 
-    actual_content
+    last_byte_map
 }
 
 #[cfg(test)]
@@ -177,11 +204,67 @@ mod tests {
         println!("{:?}", String::from_utf8(content));
     }
 
-    #[test]
-    fn repl() {
-        let x = vec![0; 4];
-        println!("{:?}", x);
-        let slice = &x[0..1];
-        println!("{:?}", slice);
+    /*#[test]
+    fn populate_last_byte_map_test() {
+        let block_size = 16;
+        let short_crafted_block = vec!['A' as u8; block_size - 1];
+        let key = vec![0; block_size];
+
+        let expected_cipher = aes::encrypt_aes_128(&vec!['A' as u8; block_size], &key,
+                                                   &BlockCipherMode::ECB);
+        let expected_cipher_byte = 'A';
+
+        let map = populate_last_byte_map(&short_crafted_block, &key);
+
+        assert_eq!(map.len(), human::ALPHABET.len());
+        assert_eq!(*map.get(&expected_cipher).unwrap() as char, expected_cipher_byte);
+    }*/
+
+    /*#[test]
+    fn craft_short_block_no_known_characters() {
+        let block_size: usize = 16;
+        let placeholder_byte = 'A' as u8;
+        let known_characters = vec![];
+
+        let expected_crafted_block = vec!['A' as u8; block_size - 1];
+
+        let actual_crafted_short_block = craft_short_block(block_size, &placeholder_byte,
+                                                           &known_characters);
+
+        assert_eq!(actual_crafted_short_block, expected_crafted_block);
+        assert_eq!(actual_crafted_short_block.len(), 15);
     }
+
+    #[test]
+    fn craft_short_block_some_known_characters() {
+        let block_size: usize = 16;
+        let placeholder_byte = 'A' as u8;
+        let known_characters: Vec<u8> = (0..(block_size / 2) as u8).collect();
+
+        let expected_crafted_block = vec![
+            vec![placeholder_byte; block_size / 2 - 1].as_slice(),
+            &known_characters
+        ].concat();
+
+        let actual_crafted_short_block = craft_short_block(block_size, &placeholder_byte,
+                                                           &known_characters);
+
+        assert_eq!(actual_crafted_short_block, expected_crafted_block);
+        assert_eq!(actual_crafted_short_block.len(), 15);
+    }
+
+    #[test]
+    fn craft_short_block_block_size_amount_of_known_characters() {
+        let block_size: usize = 16;
+        let placeholder_byte = 'A' as u8;
+        let known_characters: Vec<u8> = (0..block_size as u8).collect();
+
+        let expected_crafted_block = &known_characters;
+
+        let actual_crafted_short_block = craft_short_block(block_size, &placeholder_byte,
+                                                           &known_characters);
+
+        assert_eq!(&actual_crafted_short_block, expected_crafted_block);
+        assert_eq!(actual_crafted_short_block.len(), 15);
+    }*/
 }
