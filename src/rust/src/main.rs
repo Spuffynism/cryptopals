@@ -2,6 +2,7 @@ extern crate core;
 extern crate rustc_serialize;
 extern crate rand;
 
+mod human;
 mod hex;
 mod aes;
 mod macros;

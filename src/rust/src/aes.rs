@@ -115,7 +115,7 @@ pub fn encrypt_aes_128(bytes: &Vec<u8>, key: &Vec<u8>, mode: &BlockCipherMode) -
         state = add_round_key(&state, &w[Nr * Nb..(Nr + 1) * Nb].to_vec());
 
         match mode {
-            BlockCipherMode::CBC(iv) => {
+            BlockCipherMode::CBC(_iv) => {
                 previous_state = state.clone();
             }
             BlockCipherMode::ECB => ()
@@ -243,9 +243,7 @@ fn key_expansion(key: &[u8]) -> Vec<Vec<u8>> {
         w[i] = xor::fixed_key_xor(&w[i - Nk], &temp).to_vec();
     }
 
-    w.iter()
-        .map(|v| v.to_vec())
-        .collect()
+    w
 }
 
 /// Transformation in the Cipher and Inverse Cipher in which a Round

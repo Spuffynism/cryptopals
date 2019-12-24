@@ -1,7 +1,9 @@
 use ::vs;
-use rand::{RngCore, Rng, random};
+use rand::{RngCore, Rng};
 use aes;
 use aes::BlockCipherMode;
+use human;
+use std::collections::HashSet;
 
 pub fn generate_aes_key() -> Vec<u8> {
     generate_bytes_for_length(16)
@@ -14,7 +16,7 @@ fn generate_bytes_for_length(length: u32) -> Vec<u8> {
     bytes
 }
 
-pub fn encrypt_under_random_key(content: &Vec<u8>) -> (Vec<u8>, Vec<u8>, Vec<u8>, BlockCipherMode) {
+pub fn encrypt_under_random_key(content: &Vec<u8>) -> (Vec<u8>, BlockCipherMode) {
     let key = generate_aes_key();
     let prefix = generate_bytes_for_length(rand::thread_rng().gen_range(5, 11));
     let suffix = generate_bytes_for_length(rand::thread_rng().gen_range(5, 11));
@@ -25,45 +27,37 @@ pub fn encrypt_under_random_key(content: &Vec<u8>) -> (Vec<u8>, Vec<u8>, Vec<u8>
         true => aes::BlockCipherMode::ECB,
         false => {
             // TODO(nich): Generate random iv
-            let iv = vec![vec![1; 4]; 4];
+            let iv = vec![vec![1u8; 4]; 4];
             aes::BlockCipherMode::CBC(iv)
         }
     };
 
     let cipher = aes::encrypt_aes_128(&padded_content, &key, &mode);
 
-    (padded_content, key, cipher, mode)
+    (cipher, mode)
 }
 
-fn detect_block_cipher_mode(message: &Vec<u8>, key: &Vec<u8>, cipher: &Vec<u8>) -> BlockCipherMode {
-    let parts = aes::bytes_to_parts(&cipher);
-    if parts.len() < 2 {
+fn detect_block_cipher_mode(cipher: &Vec<u8>) -> BlockCipherMode {
+    let chunks = cipher.chunks(16);
+    let chunks_count = chunks.len();
+    if chunks_count < 2 {
         panic!("Can't detect block cipher mode when cipher is less than 2 blocks long.");
     }
 
-    let mut i = 0;
-    while i + 16 < message.len() {
-        let message_part = &message[i..i + 16].to_vec();
-        let encrypted_message_part = &aes::encrypt_aes_128(&message_part, &key,
-                                                           &BlockCipherMode::ECB);
+    let unique_chunks = &chunks.into_iter().collect::<HashSet<&[u8]>>();
 
-        let mut j = 0;
-        while j + 16 < cipher.len() {
-            let cipher_part = &cipher[j..j + 16].to_vec();
+    if chunks_count < unique_chunks.len() { BlockCipherMode::ECB } else { BlockCipherMode::CBC(vec![vec![0; 4]; 4]) }
+}
 
-            if cipher_part == encrypted_message_part {
-                return BlockCipherMode::ECB;
-            }
+/*pub fn byte_at_a_time_ecb_decryption(unknown_string: &Vec<u8>, key: &Vec<u8>) -> Vec<u8> {
+    for char in human::ALPHABET.iter() {
+        let block_size;
 
-            j += 1;
-        }
-
-
-        i += 1;
+        for i in
     }
 
-    BlockCipherMode::CBC(vec![vec![0; 4]; 4])
-}
+    vec![]
+}*/
 
 #[cfg(test)]
 mod tests {
@@ -75,7 +69,6 @@ mod tests {
     #[test]
     fn challenge9() {
         let message = vs!("YELLOW SUBMARINE");
-        let desired_length = 20u8;
         let expected_result = [message.as_slice(), &[0x04, 0x04, 0x04, 0x04]].concat();
 
         let actual_result = aes::pkcs7_pad(&message, 20);
@@ -100,8 +93,6 @@ mod tests {
         let iv = vec![vec![0x00; 4]; 4];
         let mode = BlockCipherMode::CBC(iv);
 
-        let expected_content = file_util::read_file_bytes("./test_resources/expected_lyrics.txt");
-
         let deciphered = aes::decrypt_aes_128(&cbc_cipher, &key, &mode);
 
         assert!(deciphered.starts_with(&vs!("I'm back and I'm ringin' the bell")));
@@ -117,12 +108,17 @@ mod tests {
 
     #[test]
     fn challenge11() {
-        let input = vs!("A random message to be encrypted.");
-        let (padded_content, key, cipher, expected_mode) =
-            &encrypt_under_random_key(&input);
+        let input = vec![0u8; 16 * 8];
+        let (cipher, expected_mode) = &encrypt_under_random_key(&input);
 
-        let found_mode = &detect_block_cipher_mode(&padded_content, &key, &cipher);
+        let found_mode = &detect_block_cipher_mode(&cipher);
 
         assert_eq!(std::mem::discriminant(found_mode), std::mem::discriminant(expected_mode))
+    }
+
+    #[test]
+    fn challenge12() {
+        let unknown_string = file_util::read_base64_file_bytes("./resources/12.txt");
+        //byte_at_a_time_ecb_decryption(&unknown_string, &generate_aes_key());
     }
 }

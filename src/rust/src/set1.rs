@@ -3,21 +3,13 @@ use std::f32;
 
 use rustc_serialize::base64::{STANDARD, ToBase64};
 
+use human;
 use ::vs;
 use xor;
 use file_util;
 use aes;
 use hex;
 use std::collections::HashSet;
-
-static ALPHABET: [char; 74] = [
-    '0', '1', '2', '3', '4', '5', '6', '7', '8', '9',
-    'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm',
-    'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z',
-    'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M',
-    'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z',
-    ',', ';', ':', '.', ' ', '\'', '\n', '\\', '/', '"', '\r', '-',
-];
 
 pub fn hex_fixed_xor(hex_input: &Vec<u8>, hex_key: &Vec<u8>) -> Vec<u8> {
     assert_eq!(hex_input.len(), hex_key.len());
@@ -33,7 +25,7 @@ pub fn find_single_byte_xor(input: &Vec<u8>) -> (char, f32, Vec<u8>) {
     let mut best_score: f32 = -1_f32;
     let mut best_result: Vec<u8> = vec![];
 
-    for character in ALPHABET.iter() {
+    for character in human::ALPHABET.iter() {
         let result: Vec<u8> = xor::single_byte_xor(&input, (*character as u32) as u8);
 
         let score = calculate_human_resemblance_score(&result);
@@ -60,7 +52,7 @@ fn calculate_human_resemblance_score(input: &Vec<u8>) -> f32 {
     let mut human_characters_count = 0;
 
     for letter in input.iter() {
-        if ALPHABET.contains(&char::from_u32(*letter as u32).unwrap()) {
+        if human::ALPHABET.contains(&char::from_u32(*letter as u32).unwrap()) {
             human_characters_count += 1;
         }
     }
@@ -210,7 +202,7 @@ fn detect_aes_in_ecb_mode(cipher_candidates: Vec<Vec<u8>>) -> Vec<u8> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use aes::{decrypt_aes_128, BlockCipherMode};
+    use aes::{BlockCipherMode};
 
     #[test]
     fn challenge1() {
@@ -246,7 +238,7 @@ mod tests {
         let lines = file_util::read_file_lines("./resources/4.txt");
         let expected = vs!("7b5a4215415d544115415d5015455447414c155c46155f4058455c5b523f");
 
-        let (_key, _score, xored_result, candidate) = find_most_human(lines);
+        let (_key, _score, _xored_result, candidate) = find_most_human(lines);
 
         assert_eq!(candidate, expected);
     }
@@ -319,13 +311,10 @@ mod tests {
 
     #[test]
     fn challenge8() {
-        let key = &vs!("YELLOW SUBMARINE");
         let lines = file_util::read_hex_file_lines("./resources/8.txt");
         let expected = hex::hex_to_bytes(&vs!("d880619740a8a19b7840a8a31c810a3d08649af70dc06f4fd5d2d69c744cd283e2dd052f6b641dbf9d11b0348542bb5708649af70dc06f4fd5d2d69c744cd2839475c9dfdbc1d46597949d9c7e82bf5a08649af70dc06f4fd5d2d69c744cd28397a93eab8d6aecd566489154789a6b0308649af70dc06f4fd5d2d69c744cd283d403180c98c8f6db1f2a3f9c4040deb0ab51b29933f2c123c58386b06fba186a"));
 
         let actual_found = detect_aes_in_ecb_mode(lines);
-
-        let deciphered = decrypt_aes_128(&actual_found, key, &BlockCipherMode::ECB);
 
         assert_eq!(actual_found, expected);
     }
