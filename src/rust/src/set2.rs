@@ -207,6 +207,7 @@ mod tests {
     }
 
     #[test]
+    #[ignore] // takes up to 2 minutes to run.
     fn challenge12() {
         let unknown_string = file_util::read_base64_file_bytes("./resources/12.txt");
         let key = generate_aes_key();
@@ -220,68 +221,4 @@ mod tests {
         assert!(deciphered.starts_with(&vs!("Rollin' in my 5.0\nWith")));
         assert!(deciphered.ends_with(&vs!("No, I just drove by\n")));
     }
-
-    /*#[test]
-    fn populate_last_byte_map_test() {
-        let block_size = 16;
-        let short_crafted_block = vec!['A' as u8; block_size - 1];
-        let key = vec![0; block_size];
-
-        let expected_cipher = aes::encrypt_aes_128(&vec!['A' as u8; block_size], &key,
-                                                   &BlockCipherMode::ECB);
-        let expected_cipher_byte = 'A';
-
-        let map = populate_last_byte_map(&short_crafted_block, &key);
-
-        assert_eq!(map.len(), human::ALPHABET.len());
-        assert_eq!(*map.get(&expected_cipher).unwrap() as char, expected_cipher_byte);
-    }*/
-
-    /*#[test]
-    fn craft_short_block_no_known_characters() {
-        let block_size: usize = 16;
-        let placeholder_byte = 'A' as u8;
-        let known_characters = vec![];
-
-        let expected_crafted_block = vec!['A' as u8; block_size - 1];
-
-        let actual_crafted_short_block = craft_short_block(block_size, &placeholder_byte,
-                                                           &known_characters);
-
-        assert_eq!(actual_crafted_short_block, expected_crafted_block);
-        assert_eq!(actual_crafted_short_block.len(), 15);
-    }
-
-    #[test]
-    fn craft_short_block_some_known_characters() {
-        let block_size: usize = 16;
-        let placeholder_byte = 'A' as u8;
-        let known_characters: Vec<u8> = (0..(block_size / 2) as u8).collect();
-
-        let expected_crafted_block = vec![
-            vec![placeholder_byte; block_size / 2 - 1].as_slice(),
-            &known_characters
-        ].concat();
-
-        let actual_crafted_short_block = craft_short_block(block_size, &placeholder_byte,
-                                                           &known_characters);
-
-        assert_eq!(actual_crafted_short_block, expected_crafted_block);
-        assert_eq!(actual_crafted_short_block.len(), 15);
-    }
-
-    #[test]
-    fn craft_short_block_block_size_amount_of_known_characters() {
-        let block_size: usize = 16;
-        let placeholder_byte = 'A' as u8;
-        let known_characters: Vec<u8> = (0..block_size as u8).collect();
-
-        let expected_crafted_block = &known_characters;
-
-        let actual_crafted_short_block = craft_short_block(block_size, &placeholder_byte,
-                                                           &known_characters);
-
-        assert_eq!(&actual_crafted_short_block, expected_crafted_block);
-        assert_eq!(actual_crafted_short_block.len(), 15);
-    }*/
 }

@@ -5,21 +5,25 @@
 
 use xor;
 
+mod state;
+mod math;
+
 /// Number of columns (32-bit words) comprising the State. For this standard, Nb = 4.
 #[allow(non_upper_case_globals)]
 static Nb: usize = 4;
 
 /// Number of rounds, which is a function of Nk and Nb (which is fixed). For this implementation,
-/// Nr = 10.
+/// Nr = 10. (because this is only aes-128)
 #[allow(non_upper_case_globals)]
 static Nr: usize = 10;
 
-/// Number of 32-bit words comprising the Cipher Key. For this implementation, Nk = 4.
+/// Number of 32-bit words comprising the Cipher Key. For this implementation, Nk = 4. (because
+/// this is only aes-128)
 #[allow(non_upper_case_globals)]
 static Nk: usize = 4;
 
 /// Non-linear substitution table used in several byte substitution transformations and in the
-/// Key Expansion routine to perform a onefor-one substitution of a byte value.
+/// Key Expansion routine to perform a one-for-one substitution of a byte value.
 static S_BOX: [u8; 256] = [
     0x63, 0x7c, 0x77, 0x7b, 0xf2, 0x6b, 0x6f, 0xc5, 0x30, 0x01, 0x67, 0x2b, 0xfe, 0xd7, 0xab, 0x76,
     0xca, 0x82, 0xc9, 0x7d, 0xfa, 0x59, 0x47, 0xf0, 0xad, 0xd4, 0xa2, 0xaf, 0x9c, 0xa4, 0x72, 0xc0,
@@ -60,7 +64,7 @@ static INVERSE_S_BOX: [u8; 256] = [
     0x17, 0x2b, 0x04, 0x7e, 0xba, 0x77, 0xd6, 0x26, 0xe1, 0x69, 0x14, 0x63, 0x55, 0x21, 0x0c, 0x7d
 ];
 
-/// The round constant word array.
+/// Round constant word array.
 #[allow(non_upper_case_globals)]
 static Rcon: [[u8; 4]; 10] = [
     [0x01, 0x00, 0x00, 0x00],
@@ -90,29 +94,33 @@ pub fn encrypt_aes_128(bytes: &Vec<u8>, key: &Vec<u8>, mode: &BlockCipherMode) -
     let w = key_expansion(key);
     let parts = bytes_to_parts(bytes);
     let mut cipher_parts: Vec<Vec<u8>> = Vec::with_capacity(parts.len());
-    let mut previous_state: Vec<Vec<u8>> = vec![vec![0; 4]; 4];
+    let mut previous_state: state::State = state::State::empty();
 
     for (i, part) in parts.iter().enumerate() {
-        let mut state = part_to_state(part);
+        let mut state = state::State::from_part(part);
         match mode {
             BlockCipherMode::CBC(iv) => {
-                state = xor_state(&state, if i == 0 { &iv } else { &previous_state });
+                state = if i == 0 {
+                    state.xor(&iv)
+                } else {
+                    state.xor_with_state(&previous_state)
+                };
             }
             BlockCipherMode::ECB => ()
         }
 
-        state = add_round_key(&state, &w[0..Nb].to_vec());
+        state = state.add_round_key(&w[0..Nb].to_vec());
 
         for round in 1..Nr {
-            state = sub_bytes(&state);
-            state = shift_rows(&state);
-            state = mix_columns(&state);
-            state = add_round_key(&state, &w[round * Nb..(round + 1) * Nb].to_vec());
+            state = state.sub_bytes();
+            state = state.shift_rows();
+            state = state.mix_columns();
+            state = state.add_round_key(&w[round * Nb..(round + 1) * Nb].to_vec());
         }
 
-        state = sub_bytes(&state);
-        state = shift_rows(&state);
-        state = add_round_key(&state, &w[Nr * Nb..(Nr + 1) * Nb].to_vec());
+        state = state.sub_bytes();
+        state = state.shift_rows();
+        state = state.add_round_key(&w[Nr * Nb..(Nr + 1) * Nb].to_vec());
 
         match mode {
             BlockCipherMode::CBC(_iv) => {
@@ -121,7 +129,7 @@ pub fn encrypt_aes_128(bytes: &Vec<u8>, key: &Vec<u8>, mode: &BlockCipherMode) -
             BlockCipherMode::ECB => ()
         }
 
-        cipher_parts.push(state_to_block(&state));
+        cipher_parts.push(state.to_block());
     }
 
     cipher_parts.iter()
@@ -136,48 +144,41 @@ pub fn decrypt_aes_128(cipher: &Vec<u8>, key: &Vec<u8>, mode: &BlockCipherMode) 
     let w = key_expansion(key);
     let parts = bytes_to_parts(cipher);
     let mut deciphered_parts: Vec<Vec<u8>> = Vec::with_capacity(parts.len());
-    let mut previous_state: Vec<Vec<u8>> = vec![vec![0; 4]; 4];
+    let mut previous_state = state::State::empty();
 
     for (i, part) in parts.iter().enumerate() {
-        let mut state = part_to_state(part);
+        let mut state = state::State::from_part(part);
 
-        state = add_round_key(&state, &w[Nr * Nb..(Nr + 1) * Nb].to_vec());
+        state = state.add_round_key(&w[Nr * Nb..(Nr + 1) * Nb].to_vec());
 
         for round in (1..Nr).rev() {
-            state = inv_shift_rows(&state);
-            state = inv_sub_bytes(&state);
-            state = add_round_key(&state, &w[round * Nb..(round + 1) * Nb].to_vec());
-            state = inv_mix_columns(&state);
+            state = state.inv_shift_rows();
+            state = state.inv_sub_bytes();
+            state = state.add_round_key(&w[round * Nb..(round + 1) * Nb].to_vec());
+            state = state.inv_mix_columns();
         }
 
-        state = inv_shift_rows(&state);
-        state = inv_sub_bytes(&state);
-        state = add_round_key(&state, &w[0..Nb].to_vec());
+        state = state.inv_shift_rows();
+        state = state.inv_sub_bytes();
+        state = state.add_round_key(&w[0..Nb].to_vec());
 
         match mode {
             BlockCipherMode::CBC(iv) => {
-                state = xor_state(&state, if i == 0 { &iv } else { &previous_state });
-                previous_state = part_to_state(part);
+                state = if i == 0 {
+                    state.xor(&iv)
+                } else {
+                    state.xor_with_state(&previous_state)
+                };
+                previous_state = state::State::from_part(part);
             }
             BlockCipherMode::ECB => ()
         }
 
-        deciphered_parts.push(state_to_block(&state));
+        deciphered_parts.push(state.to_block());
     }
 
     deciphered_parts.iter()
         .fold(Vec::new(), |acc, line| [acc.as_slice(), line.as_slice()].concat())
-}
-
-fn xor_state(state: &Vec<Vec<u8>>, iv: &Vec<Vec<u8>>) -> Vec<Vec<u8>> {
-    let mut xored_state: Vec<Vec<u8>> = vec![vec![0; 4]; 4];
-    for i in 0..4 {
-        for j in 0..Nb {
-            xored_state[i][j] = state[i][j] ^ iv[i][j];
-        }
-    }
-
-    xored_state
 }
 
 pub fn bytes_to_parts(bytes: &Vec<u8>) -> Vec<Vec<u8>> {
@@ -192,28 +193,6 @@ pub fn bytes_to_parts(bytes: &Vec<u8>) -> Vec<Vec<u8>> {
     }
 
     parts
-}
-
-fn part_to_state(block: &Vec<u8>) -> Vec<Vec<u8>> {
-    let mut state: Vec<Vec<u8>> = vec![vec![0; 4]; 4];
-    for r in 0..4 {
-        for c in 0..Nb {
-            state[c][r] = block[r + 4 * c];
-        }
-    }
-
-    state
-}
-
-fn state_to_block(state: &Vec<Vec<u8>>) -> Vec<u8> {
-    let mut out: Vec<u8> = vec![0; 4 * Nb];
-    for r in 0..4 {
-        for c in 0..Nb {
-            out[r + 4 * c] = state[c][r];
-        }
-    }
-
-    out
 }
 
 /// Routine used to generate a series of Round Keys from the Cipher Key.
@@ -259,117 +238,6 @@ fn add_round_key(state: &Vec<Vec<u8>>, round_key: &Vec<Vec<u8>>) -> Vec<Vec<u8>>
     }
 
     xored_state
-}
-
-/// Transformation in the Cipher that processes the State using a nonlinear byte
-/// substitution table (S-box) that operates on each of the State bytes
-/// independently.
-fn sub_bytes(state: &Vec<Vec<u8>>) -> Vec<Vec<u8>> {
-    sub_bytes_with_box(&state, &S_BOX)
-}
-
-/// Transformation in the Inverse Cipher that is the inverse of
-fn inv_sub_bytes(state: &Vec<Vec<u8>>) -> Vec<Vec<u8>> {
-    sub_bytes_with_box(&state, &INVERSE_S_BOX)
-}
-
-fn sub_bytes_with_box(state: &Vec<Vec<u8>>, substitution_box: &[u8; 256]) -> Vec<Vec<u8>> {
-    let mut substituted_bytes: Vec<Vec<u8>> = vec![vec![0; 4]; 4];
-    for (i, row) in state.iter().enumerate() {
-        for (j, byte) in row.iter().enumerate() {
-            substituted_bytes[i][j] = substitution_box[*byte as usize];
-        }
-    }
-
-    substituted_bytes
-}
-
-/// Transformation in the Cipher that processes the State by cyclically
-/// shifting the last three rows of the State by different offsets.
-fn shift_rows(state: &Vec<Vec<u8>>) -> Vec<Vec<u8>> {
-    vec![
-        vec![state[0][0], state[1][1], state[2][2], state[3][3]],
-        vec![state[1][0], state[2][1], state[3][2], state[0][3]],
-        vec![state[2][0], state[3][1], state[0][2], state[1][3]],
-        vec![state[3][0], state[0][1], state[1][2], state[2][3]],
-    ]
-}
-
-/// Transformation in the Inverse Cipher that is the inverse of inv_shift_rows
-fn inv_shift_rows(state: &Vec<Vec<u8>>) -> Vec<Vec<u8>> {
-    vec![
-        vec![state[0][0], state[3][1], state[2][2], state[1][3]],
-        vec![state[1][0], state[0][1], state[3][2], state[2][3]],
-        vec![state[2][0], state[1][1], state[0][2], state[3][3]],
-        vec![state[3][0], state[2][1], state[1][2], state[0][3]],
-    ]
-}
-
-/// Transformation in the Cipher that takes all of the columns of the
-/// State and mixes their data (independently of one another) to
-/// produce new columns.
-fn mix_columns(state: &Vec<Vec<u8>>) -> Vec<Vec<u8>> {
-    let fixed_polynomial = vec![
-        vec![0x02, 0x03, 0x01, 0x01],
-        vec![0x01, 0x02, 0x03, 0x01],
-        vec![0x01, 0x01, 0x02, 0x03],
-        vec![0x03, 0x01, 0x01, 0x02],
-    ];
-    mix_columns_using_substitution_matrix(&state, &fixed_polynomial)
-}
-
-/// Transformation in the Inverse Cipher that is the inverse of mix_columns()
-fn inv_mix_columns(state: &Vec<Vec<u8>>) -> Vec<Vec<u8>> {
-    let fixed_polynomial = vec![
-        vec![0x0e, 0x0b, 0x0d, 0x09],
-        vec![0x09, 0x0e, 0x0b, 0x0d],
-        vec![0x0d, 0x09, 0x0e, 0x0b],
-        vec![0x0b, 0x0d, 0x09, 0x0e],
-    ];
-
-    mix_columns_using_substitution_matrix(&state, &fixed_polynomial)
-}
-
-fn mix_columns_using_substitution_matrix(state: &Vec<Vec<u8>>, substitution_matrix: &Vec<Vec<u8>>)
-                                         -> Vec<Vec<u8>> {
-    let mut result = vec![vec![0; 4]; 4];
-    for c in 0..4 {
-        for r in 0..4 {
-            let mut multiplications_xor = 0;
-            for i in 0..4 {
-                multiplications_xor ^= multiply_in_g(substitution_matrix[r][i], state[c][i])
-            }
-            result[c][r] = multiplications_xor
-        }
-    }
-
-    result
-}
-
-/// Adapted from https://en.wikipedia.org/wiki/Rijndael_MixColumns#Implementation_example
-/// In the polynomial representation, multiplication in GF(2^8) (denoted by •) corresponds with the
-/// multiplication of polynomials modulo an irreducible polynomial of degree 8. A polynomial is
-/// irreducible if its only divisors are one and itself
-fn multiply_in_g(polynomial_value: u8, state_value: u8) -> u8 {
-    let irreducible_polynomial = 0x1b;
-    let mut a = polynomial_value;
-    let mut b = state_value;
-    let mut p = 0;
-
-    for _ in 0..8 {
-        if (b & 1) != 0 {
-            p ^= a;
-        }
-
-        let hi_bit_set = (a & 0x80) != 0;
-        a <<= 1;
-        if hi_bit_set {
-            a ^= irreducible_polynomial;
-        }
-        b >>= 1;
-    }
-
-    p
 }
 
 /// Function used in the Key Expansion routine that takes a four-byte
@@ -427,122 +295,6 @@ mod tests {
         let given_word = sub_word(word);
 
         assert_eq!(given_word.as_slice(), expected_word);
-    }
-
-    #[test]
-    fn add_round_key_test() {
-        let key_schedule = vec![
-            vec![0x13, 0x11, 0x1d, 0x7f],
-            vec![0xe3, 0x94, 0x4a, 0x17],
-            vec![0xf3, 0x07, 0xa7, 0x8b],
-            vec![0x4d, 0x2b, 0x30, 0xc5]
-        ];
-        let state = vec![
-            vec![0x69, 0xc4, 0xe0, 0xd8],
-            vec![0x6a, 0x7b, 0x04, 0x30],
-            vec![0xd8, 0xcd, 0xb7, 0x80],
-            vec![0x70, 0xb4, 0xc5, 0x5a]
-        ];
-        let expected_state: Vec<Vec<u8>> = vec![
-            vec![0x7a, 0xd5, 0xfd, 0xa7],
-            vec![0x89, 0xef, 0x4e, 0x27],
-            vec![0x2b, 0xca, 0x10, 0x0b],
-            vec![0x3d, 0x9f, 0xf5, 0x9f]
-        ];
-
-        let actual_state = add_round_key(&state, &key_schedule);
-
-        assert_eq!(actual_state, expected_state);
-    }
-
-    #[test]
-    fn inv_mix_columns_test() {
-        let test_cases: Vec<(Vec<Vec<u8>>, Vec<Vec<u8>>)> = vec![
-            (vec![
-                vec![0xbd, 0x6e, 0x7c, 0x3d],
-                vec![0xf2, 0xb5, 0x77, 0x9e],
-                vec![0x0b, 0x61, 0x21, 0x6e],
-                vec![0x8b, 0x10, 0xb6, 0x89]
-            ], vec![
-                vec![0x47, 0x73, 0xb9, 0x1f],
-                vec![0xf7, 0x2f, 0x35, 0x43],
-                vec![0x61, 0xcb, 0x01, 0x8e],
-                vec![0xa1, 0xe6, 0xcf, 0x2c]
-            ]),
-            (vec![
-                vec![0xfd, 0xe3, 0xba, 0xd2],
-                vec![0x05, 0xe5, 0xd0, 0xd7],
-                vec![0x35, 0x47, 0x96, 0x4e],
-                vec![0xf1, 0xfe, 0x37, 0xf1]
-            ], vec![
-                vec![0x2d, 0x7e, 0x86, 0xa3],
-                vec![0x39, 0xd9, 0x39, 0x3e],
-                vec![0xe6, 0x57, 0x0a, 0x11],
-                vec![0x01, 0x90, 0x4e, 0x16]
-            ])
-        ];
-
-        for (state, expected_state) in test_cases.iter() {
-            let actual_state = inv_mix_columns(state);
-            assert_eq!(actual_state, *expected_state);
-        }
-    }
-
-    #[test]
-    fn multiply_in_g_test() {
-        let test_cases: Vec<(u8, u8, u8)> = vec![
-            (0x57, 0x83, 0xc1),
-            (0x57, 0x13, 0xfe),
-            (0x57, 0x02, 0xae),
-            (0x57, 0x04, 0x47),
-            (0x57, 0x08, 0x8e),
-            (0x57, 0x10, 0x07)
-        ];
-
-        for (a, b, expected) in test_cases.iter() {
-            let actual_result = multiply_in_g(*a, *b);
-            assert_eq!(actual_result, *expected);
-        }
-    }
-
-    #[test]
-    fn inv_shift_rows_test() {
-        let state = vec![
-            vec![0x7a, 0xd5, 0xfd, 0xa7],
-            vec![0x89, 0xef, 0x4e, 0x27],
-            vec![0x2b, 0xca, 0x10, 0x0b],
-            vec![0x3d, 0x9f, 0xf5, 0x9f]
-        ];
-        let expected_state = vec![
-            vec![0x7a, 0x9f, 0x10, 0x27],
-            vec![0x89, 0xd5, 0xf5, 0x0b],
-            vec![0x2b, 0xef, 0xfd, 0x9f],
-            vec![0x3d, 0xca, 0x4e, 0xa7]
-        ];
-
-        let actual_state = inv_shift_rows(&state);
-
-        assert_eq!(actual_state, expected_state);
-    }
-
-    #[test]
-    fn inv_sub_bytes_test() {
-        let state = vec![
-            vec![0x7a, 0x9f, 0x10, 0x27],
-            vec![0x89, 0xd5, 0xf5, 0x0b],
-            vec![0x2b, 0xef, 0xfd, 0x9f],
-            vec![0x3d, 0xca, 0x4e, 0xa7]
-        ];
-        let expected_state = vec![
-            vec![0xbd, 0x6e, 0x7c, 0x3d],
-            vec![0xf2, 0xb5, 0x77, 0x9e],
-            vec![0x0b, 0x61, 0x21, 0x6e],
-            vec![0x8b, 0x10, 0xb6, 0x89]
-        ];
-
-        let actual_state = inv_sub_bytes(&state);
-
-        assert_eq!(actual_state, expected_state);
     }
 
     #[test]
