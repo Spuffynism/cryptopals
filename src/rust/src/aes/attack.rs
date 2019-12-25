@@ -2,6 +2,9 @@ use aes::BlockCipherMode;
 use std::collections::{HashSet, HashMap};
 use std::ops::Range;
 use ::{human, aes};
+use profile::profile_for;
+use profile;
+use ::vs;
 
 /// Detectes the block cipher mode of a cipher.
 pub fn detect_block_cipher_mode(cipher: &Vec<u8>) -> BlockCipherMode {
@@ -60,7 +63,7 @@ pub fn byte_at_a_time_ecb_decryption<O>(oracle: O) -> Vec<u8> where O: Fn(&Vec<u
             let short_crafted_block = craft_short_block(block_size, &placeholder_byte, &known_characters);
 
             // populate last-byte character map
-            let mut last_byte_map = populate_last_byte_map(
+            let last_byte_map = populate_last_byte_map(
                 &[&short_crafted_block[..], &known_characters[..]].concat(),
                 &oracle,
                 &current_block_range,
@@ -110,11 +113,80 @@ fn populate_last_byte_map<O>(block: &Vec<u8>,
     last_byte_map
 }
 
-pub fn build_oracle<'a>(unknown_string: &'a Vec<u8>, key: &'a Vec<u8>) -> impl Fn(&Vec<u8>) ->
+pub fn build_byte_at_a_time_oracle<'a>(unknown_string: &'a Vec<u8>, key: &'a Vec<u8>) -> impl Fn(&Vec<u8>) ->
 Vec<u8> + 'a {
     move |crafted_input: &Vec<u8>| -> Vec<u8> {
         let input = &[&crafted_input[..], &unknown_string[..]].concat();
 
         aes::encrypt_aes_128(&input, &key, &aes::BlockCipherMode::ECB)
     }
+}
+
+pub fn build_ecb_cut_and_paste_oracle<'a>(key: &'a Vec<u8>) -> impl Fn
+(&Vec<u8>) ->
+    Vec<u8> + 'a {
+    move |email: &Vec<u8>| -> Vec<u8> {
+        let encoded_profile = &profile::profile_for(&String::from_utf8(email.to_vec()).unwrap());
+        let encoded_profile_bytes = vs!(encoded_profile.as_str());
+
+        aes::encrypt_aes_128(&encoded_profile_bytes, &key, &aes::BlockCipherMode::ECB)
+    }
+}
+
+pub fn ecb_cut_and_paste(key: &Vec<u8>) -> Vec<u8> {
+    let initial_email = "foo@bar.com".to_string();
+    let initial_email_bytes: Vec<u8> = vs!(&initial_email);
+    let block_size = 16;
+    let profile = profile_for(&initial_email);
+    let profile_bytes: Vec<u8> = vs!(&profile);
+
+    let mut email_starting_index = 0;
+    for (i, _) in profile_bytes.iter().enumerate() {
+        if i < profile_bytes.len() - initial_email_bytes.len()
+            && profile_bytes[i..i + initial_email_bytes.len()] == initial_email_bytes[..] {
+            email_starting_index = i;
+            break;
+        }
+    }
+
+    let first_email_bytes = &profile_bytes[email_starting_index..block_size];
+    let last_email_bytes = &profile_bytes[block_size..block_size + (initial_email_bytes.len() -
+        first_email_bytes.len())];
+    let admin_role = "admin".to_string();
+    let crafted_admin_block = aes::pkcs7_pad(&vs!(admin_role), block_size as u8);
+    let crafted_email_bytes = [first_email_bytes, &crafted_admin_block[..], last_email_bytes].concat();
+    let crafted_profile = profile_for(&String::from_utf8(crafted_email_bytes).unwrap());
+    let email_block_range = block_size..block_size * 2;
+    let cipher_to_create_admin_block = aes::encrypt_aes_128(&vs!(crafted_profile), &key, &BlockCipherMode::ECB);
+
+    let email_cipher_block = &cipher_to_create_admin_block[email_block_range];
+
+    // make email so that "user" (from role=user) is first part of block
+    let role_equals_bytes = vs!("role=");
+    let mut role_starting_index = 0;
+    for (i, _) in profile_bytes.iter().enumerate() {
+        if i < profile_bytes.len() - role_equals_bytes.len()
+            && profile_bytes[i..i + role_equals_bytes.len()] == role_equals_bytes[..] {
+            role_starting_index = i;
+            break;
+        }
+    }
+
+    let necessary_additional_characters = block_size - role_equals_bytes.len() -
+        (role_starting_index % block_size);
+    let crafted_final_email: &[u8] = &[
+        &vec!['a' as u8; necessary_additional_characters][..],
+        &initial_email_bytes[..]
+    ].concat();
+    let crafted_profile_to_replace_role = profile_for(&String::from_utf8(crafted_final_email.to_vec()).unwrap());
+    let mut cipher_to_replace_role = &mut aes::encrypt_aes_128(&vs!(crafted_profile_to_replace_role), &key, &BlockCipherMode::ECB);
+
+    let mut continue_replacing = true;
+    let mut i = cipher_to_replace_role.len() - 1;
+    for byte in email_cipher_block.iter().rev() {
+        cipher_to_replace_role[i] = *byte;
+        i -= 1;
+    }
+
+    cipher_to_replace_role.to_vec()
 }
