@@ -2,7 +2,6 @@ use ::vs;
 use rand::Rng;
 use aes;
 use aes::BlockCipherMode;
-use std::collections::HashMap;
 
 pub fn encrypt_under_random_key(content: &Vec<u8>) -> (Vec<u8>, BlockCipherMode) {
     let key = aes::generate::generate_aes_128_key();
@@ -27,7 +26,7 @@ pub fn encrypt_under_random_key(content: &Vec<u8>) -> (Vec<u8>, BlockCipherMode)
 #[cfg(test)]
 mod tests {
     use super::*;
-    use ::{aes, profile};
+    use ::aes;
     use file_util;
     use aes::BlockCipherMode;
     use aes::attack::ecb_cut_and_paste;
@@ -83,12 +82,12 @@ mod tests {
     }
 
     #[test]
-    #[ignore] // takes up to 2 minutes to run.
+    //#[ignore] // takes up to 2 minutes to run.
     fn challenge12() {
         let unknown_string = file_util::read_base64_file_bytes("./resources/12.txt");
         let key = aes::generate::generate_aes_128_key();
-        let oracle = aes::attack::build_byte_at_a_time_oracle(&unknown_string, &key);
-        let deciphered = aes::attack::byte_at_a_time_ecb_decryption(oracle);
+        let oracle = aes::attack::build_byte_at_a_time_simple_oracle(&unknown_string, &key);
+        let deciphered = aes::attack::byte_at_a_time_ecb_simple_decryption(oracle, 0, &vec![]);
 
         assert!(deciphered.starts_with(&vs!("Rollin' in my 5.0\nWith")));
         assert!(deciphered.ends_with(&vs!("No, I just drove by\n")));
@@ -96,8 +95,6 @@ mod tests {
 
     #[test]
     fn challenge13() {
-        let encoded_profile = &profile::profile_for(&"foo@bar.com".to_string());
-        let encoded_profile_bytes = vs!(encoded_profile.as_str());
         let key = aes::generate::generate_aes_128_key();
 
         let cipher = ecb_cut_and_paste(&key);
@@ -106,5 +103,23 @@ mod tests {
 
         let result = String::from_utf8(decrypted_encoded_profile).unwrap();
         assert!(result.contains("uid=10&role=admin"));
+    }
+
+    #[test]
+    //#[ignore] // takes up to 2 minutes to run.
+    fn challenge14() {
+        let random_prefix = aes::generate::generate_bytes_for_length(rand::thread_rng().gen_range
+        (5, 64));
+        let unknown_string = file_util::read_base64_file_bytes("./resources/12.txt");
+        let key = aes::generate::generate_aes_128_key();
+        let oracle = aes::attack::build_byte_at_a_time_harder_oracle(
+            &random_prefix,
+            &unknown_string,
+            &key,
+        );
+        let deciphered = aes::attack::byte_at_a_time_ecb_harder_decryption(oracle);
+
+        assert!(deciphered.starts_with(&vs!("Rollin' in my 5.0\nWith")));
+        assert!(deciphered.ends_with(&vs!("No, I just drove by\n")));
     }
 }

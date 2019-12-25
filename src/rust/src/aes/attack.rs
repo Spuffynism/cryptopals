@@ -3,7 +3,6 @@ use std::collections::{HashSet, HashMap};
 use std::ops::Range;
 use ::{human, aes};
 use profile::profile_for;
-use profile;
 use ::vs;
 
 /// Detectes the block cipher mode of a cipher.
@@ -20,72 +19,35 @@ pub fn detect_block_cipher_mode(cipher: &Vec<u8>) -> BlockCipherMode {
     if unique_chunks.len() < chunks_count { BlockCipherMode::ECB } else { BlockCipherMode::CBC(vec![vec![0; 4]; 4]) }
 }
 
-/// Decrypts a cipher using its oracle, one byte at a time.
-pub fn byte_at_a_time_ecb_decryption<O>(oracle: O) -> Vec<u8> where O: Fn(&Vec<u8>) -> Vec<u8> {
-    let mut block_size = 0;
-    let block_size_range = 1..64;
-    let placeholder_byte = 'A' as u8;
-
-    // detect the block size
-    for possible_block_size in block_size_range {
-        let repeated_bytes = vec![placeholder_byte; possible_block_size * 2];
+fn detect_oracle_block_size<O>(oracle: &O, placeholder_byte: u8) -> usize where O: Fn(&Vec<u8>)
+    -> Vec<u8> {
+    for bytes_count in 1..64 * 8 {
+        let repeated_bytes = vec![placeholder_byte; bytes_count];
 
         let cipher = oracle(&repeated_bytes);
 
-        let known_chars_slice = &cipher[..possible_block_size];
-        let expected_cipher_slice = &cipher[possible_block_size..possible_block_size * 2];
+        for block_size in (8..64).rev() {
+            let cipher_blocks = cipher.chunks(block_size);
+            let cipher_blocks_count = cipher_blocks.len();
+            let unique_blocks = &cipher_blocks.into_iter().collect::<HashSet<&[u8]>>();
 
-        if known_chars_slice == expected_cipher_slice {
-            block_size = possible_block_size;
-            break;
-        }
-    }
-
-    // confirm that the cipher is in ECB mode
-    let repeated_bytes = vec![placeholder_byte; block_size * 8];
-    let cipher_repeated_bytes = oracle(&repeated_bytes);
-
-    let detected_block_cipher_mode = detect_block_cipher_mode(&cipher_repeated_bytes);
-    if detected_block_cipher_mode != BlockCipherMode::ECB {
-        panic!("Wrong block cipher mode.");
-    }
-
-    // brute-force cipher characters one-by-one by using crafted input
-    let mut known_characters = Vec::new();
-    let empty_vec = vec![];
-    let block_count = oracle(&empty_vec).len() / block_size;
-    for current_block_index in 0..block_count {
-        for position_in_block in 0..block_size {
-            let start_of_block = current_block_index * block_size;
-            let current_block_range = start_of_block..start_of_block + block_size;
-
-            // craft one-byte short block used for the map
-            let short_crafted_block = craft_short_block(block_size, &placeholder_byte, &known_characters);
-
-            // populate last-byte character map
-            let last_byte_map = populate_last_byte_map(
-                &[&short_crafted_block[..], &known_characters[..]].concat(),
-                &oracle,
-                &current_block_range,
-            );
-
-            let ciphered_crafted_input = oracle(&short_crafted_block);
-
-            // get the block for which we have a correspondence in the map
-            let current_block = &ciphered_crafted_input[current_block_range].to_vec();
-            match last_byte_map.get(current_block) {
-                None => {
-                    // non-human or padding character was encountered
-                    break;
-                }
-                Some(character) => {
-                    known_characters.push(*character);
-                }
+            if unique_blocks.len() < cipher_blocks_count {
+                return block_size;
             }
         }
     }
 
-    known_characters
+    panic!("Block size not in range.");
+}
+
+fn confirm_oracle_mode<O>(oracle: &O, bytes: &Vec<u8>, mode: &BlockCipherMode) -> () where O:
+Fn(&Vec<u8>) -> Vec<u8> {
+    let cipher = oracle(&bytes);
+
+    let block_cipher_mode = &detect_block_cipher_mode(&cipher);
+    if block_cipher_mode != mode {
+        panic!("Wrong block cipher mode.");
+    }
 }
 
 /// Crafts a one-byte short block used by the byte-by-byte oracle decryption
@@ -113,23 +75,12 @@ fn populate_last_byte_map<O>(block: &Vec<u8>,
     last_byte_map
 }
 
-pub fn build_byte_at_a_time_oracle<'a>(unknown_string: &'a Vec<u8>, key: &'a Vec<u8>) -> impl Fn(&Vec<u8>) ->
+pub fn build_byte_at_a_time_simple_oracle<'a>(unknown_string: &'a Vec<u8>, key: &'a Vec<u8>) -> impl Fn(&Vec<u8>) ->
 Vec<u8> + 'a {
     move |crafted_input: &Vec<u8>| -> Vec<u8> {
         let input = &[&crafted_input[..], &unknown_string[..]].concat();
 
         aes::encrypt_aes_128(&input, &key, &aes::BlockCipherMode::ECB)
-    }
-}
-
-pub fn build_ecb_cut_and_paste_oracle<'a>(key: &'a Vec<u8>) -> impl Fn
-(&Vec<u8>) ->
-    Vec<u8> + 'a {
-    move |email: &Vec<u8>| -> Vec<u8> {
-        let encoded_profile = &profile::profile_for(&String::from_utf8(email.to_vec()).unwrap());
-        let encoded_profile_bytes = vs!(encoded_profile.as_str());
-
-        aes::encrypt_aes_128(&encoded_profile_bytes, &key, &aes::BlockCipherMode::ECB)
     }
 }
 
@@ -179,9 +130,8 @@ pub fn ecb_cut_and_paste(key: &Vec<u8>) -> Vec<u8> {
         &initial_email_bytes[..]
     ].concat();
     let crafted_profile_to_replace_role = profile_for(&String::from_utf8(crafted_final_email.to_vec()).unwrap());
-    let mut cipher_to_replace_role = &mut aes::encrypt_aes_128(&vs!(crafted_profile_to_replace_role), &key, &BlockCipherMode::ECB);
+    let cipher_to_replace_role = &mut aes::encrypt_aes_128(&vs!(crafted_profile_to_replace_role), &key, &BlockCipherMode::ECB);
 
-    let mut continue_replacing = true;
     let mut i = cipher_to_replace_role.len() - 1;
     for byte in email_cipher_block.iter().rev() {
         cipher_to_replace_role[i] = *byte;
@@ -189,4 +139,131 @@ pub fn ecb_cut_and_paste(key: &Vec<u8>) -> Vec<u8> {
     }
 
     cipher_to_replace_role.to_vec()
+}
+
+pub fn byte_at_a_time_ecb_harder_decryption<O>(oracle: O) -> Vec<u8> where O: Fn(&Vec<u8>) -> Vec<u8> {
+    let placeholder_byte = 'A' as u8;
+    let block_size = detect_oracle_block_size(&oracle, placeholder_byte);
+    let repeated_bytes = vec![placeholder_byte; block_size * 8];
+
+    confirm_oracle_mode(&oracle, &repeated_bytes, &BlockCipherMode::ECB);
+
+    let original_cipher = oracle(&vec![]);
+    let original_cipher_blocks = original_cipher
+        .chunks(block_size)
+        .map(|chunk| chunk.to_vec())
+        .collect::<Vec<Vec<u8>>>();
+
+    let cipher_with_added_byte = oracle(&vec![placeholder_byte; 1]);
+    let cipher_with_added_byte_blocks = cipher_with_added_byte
+        .chunks(block_size)
+        .map(|chunk| chunk.to_vec())
+        .collect::<Vec<Vec<u8>>>();
+
+    let mut block_index_in_which_ends_random_bytes = 0;
+    for (i, block) in cipher_with_added_byte_blocks.iter().enumerate() {
+        if block != &original_cipher_blocks[i] {
+            block_index_in_which_ends_random_bytes = i;
+            break;
+        }
+    }
+
+    // manipulating starting block
+    let mut necessary_padding_to_arrive_at_new_block = 0;
+    let mut last_block = original_cipher_blocks[block_index_in_which_ends_random_bytes].to_vec();
+    for possible_padding in 1..block_size + 1 {
+        let crafted_bytes = &vec![placeholder_byte; possible_padding];
+        let cipher = oracle(&crafted_bytes);
+        let cipher_blocks = cipher
+            .chunks(block_size)
+            .map(|chunk| chunk.to_vec())
+            .collect::<Vec<Vec<u8>>>();
+        let block = &cipher_blocks[block_index_in_which_ends_random_bytes];
+
+        // if previous pad is current pad, previous-pad's index is needed pad amount
+        if last_block[..] == block[..] {
+            necessary_padding_to_arrive_at_new_block = possible_padding - 1;
+            break;
+        }
+
+        last_block = block.to_vec();
+    }
+
+    let prefix = vec![placeholder_byte; necessary_padding_to_arrive_at_new_block];
+
+    let block_index_in_which_starts_controlled_bytes = if
+    necessary_padding_to_arrive_at_new_block == 0 {
+        block_index_in_which_ends_random_bytes
+    } else {
+        block_index_in_which_ends_random_bytes + 1
+    };
+
+    byte_at_a_time_ecb_simple_decryption(&oracle, block_index_in_which_starts_controlled_bytes, &prefix)
+}
+
+/// Decrypts a cipher using its oracle, one byte at a time.
+pub fn byte_at_a_time_ecb_simple_decryption<O>(
+    oracle: O,
+    block_index_in_which_starts_controlled_bytes: usize,
+    prefix: &Vec<u8>,
+) -> Vec<u8> where O: Fn(&Vec<u8>) -> Vec<u8> {
+    let placeholder_byte = 'A' as u8;
+
+    let block_size = detect_oracle_block_size(&oracle, placeholder_byte);
+
+    let repeated_bytes = vec![placeholder_byte; block_size * 8];
+    confirm_oracle_mode(&oracle, &repeated_bytes, &BlockCipherMode::ECB);
+
+    // brute-force cipher characters one-by-one by using crafted input
+    let mut known_characters = Vec::new();
+    for i in (block_index_in_which_starts_controlled_bytes * block_size)..oracle(&prefix).len() {
+        let current_block_index = (i as f32 / block_size as f32).floor() as usize;
+        let start_of_block_index = current_block_index * block_size;
+        let current_block_range = start_of_block_index..start_of_block_index + block_size;
+
+        // craft one-byte short block used for the map and for discovering the end-of-block byte
+        let short_crafted_block = craft_short_block(block_size, &placeholder_byte, &known_characters);
+
+        // populate last-byte character map
+        let last_byte_map = populate_last_byte_map(
+            &[
+                &prefix[..],
+                &short_crafted_block[..],
+                &known_characters[..]
+            ].concat(),
+            &oracle,
+            &current_block_range,
+        );
+
+        let ciphered_crafted_input = oracle(&[&prefix[..], &short_crafted_block[..]].concat());
+
+        // get the block for which we have a correspondence in the map
+        let current_block = &ciphered_crafted_input[current_block_range].to_vec();
+        match last_byte_map.get(current_block) {
+            None => {
+                // non-human or padding character was encountered
+                break;
+            }
+            Some(character) => {
+                known_characters.push(*character);
+            }
+        }
+    }
+
+    known_characters
+}
+
+pub fn build_byte_at_a_time_harder_oracle<'a>(
+    random_prefix: &'a Vec<u8>,
+    unknown_string: &'a Vec<u8>,
+    key: &'a Vec<u8>) -> impl Fn(&Vec<u8>) -> Vec<u8> + 'a {
+    move |crafted_input: &Vec<u8>| -> Vec<u8> {
+        let input = &[
+            &random_prefix[..],
+            &crafted_input[..],
+            &unknown_string[..]
+        ].concat();
+
+        aes::encrypt_aes_128(&input, &key, &aes::BlockCipherMode::ECB)
+    }
 }
