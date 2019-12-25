@@ -276,6 +276,33 @@ pub fn pkcs7_pad(bytes: &Vec<u8>, to_length: u8) -> Vec<u8> {
     padded
 }
 
+pub fn validate_pkcs7_pad(bytes: &Vec<u8>) {
+    let mut last_byte_of_bytes = 0u8;
+    let mut count_left = 0u8;
+    for (i, byte) in bytes.iter().enumerate().rev() {
+        if i == bytes.len() - 1 {
+            let byte_is_not_padding = *byte as usize >= bytes.len();
+            if byte_is_not_padding {
+                break;
+            }
+
+            last_byte_of_bytes = *byte;
+            count_left = last_byte_of_bytes - 1;
+            continue;
+        }
+
+        if count_left != 0 && *byte == last_byte_of_bytes {
+            count_left -= 1;
+        } else if *byte == last_byte_of_bytes {
+            panic!("invalid padding");
+        }
+    }
+
+    if count_left != 0 {
+        panic!("invalid padding");
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

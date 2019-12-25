@@ -122,4 +122,44 @@ mod tests {
         assert!(deciphered.starts_with(&vs!("Rollin' in my 5.0\nWith")));
         assert!(deciphered.ends_with(&vs!("No, I just drove by\n")));
     }
+
+    #[test]
+    fn challenge15_valid_case() {
+        let valid_case = &[&vs!("ICE ICE BABY")[..], &vec![0x04; 4][..]].concat();
+
+        let result = std::panic::catch_unwind(|| aes::validate_pkcs7_pad(valid_case));
+        assert!(result.is_ok())
+    }
+
+    #[test]
+    fn challenge15_no_padding() {
+        let valid_case = vs!("ICE ICE BABY!!!!");
+
+        let result = std::panic::catch_unwind(|| aes::validate_pkcs7_pad(&valid_case));
+        assert!(result.is_ok())
+    }
+
+    #[test]
+    #[should_panic]
+    fn challenge15_too_short_padding_compared_to_padding_byte() {
+        let invalid_padding_length = [&vs!("ICE ICE BABY")[..], &vec![0x05; 4][..]].concat();
+
+        aes::validate_pkcs7_pad(&invalid_padding_length);
+    }
+
+    #[test]
+    #[should_panic]
+    fn challenge15_too_long_padding_compared_to_padding_byte() {
+        let too_long_padding = [&vs!("ICE ICE BABY")[..], &vec![0x04; 5][..]].concat();
+
+        aes::validate_pkcs7_pad(&too_long_padding);
+    }
+
+    #[test]
+    #[should_panic]
+    fn challenge15_invalid_bytes() {
+        let invalid_bytes = [&vs!("ICE ICE BABY")[..], &vec![0x01, 0x02, 0x03, 0x04][..]].concat();
+
+        aes::validate_pkcs7_pad(&invalid_bytes);
+    }
 }
