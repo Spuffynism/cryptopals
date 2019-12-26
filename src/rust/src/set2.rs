@@ -129,7 +129,7 @@ mod tests {
     }
 
     #[test]
-    //#[ignore] // takes up to 2 minutes to run.
+    #[ignore] // takes up to 2 minutes to run.
     fn challenge12() {
         let unknown_string = file_util::read_base64_file_bytes("./resources/12.txt");
         let key = aes::generate::generate_aes_128_key();
@@ -153,7 +153,7 @@ mod tests {
     }
 
     #[test]
-    //#[ignore] // takes up to 2 minutes to run.
+    #[ignore] // takes up to 2 minutes to run.
     fn challenge14() {
         let random_prefix = aes::generate::generate_bytes_for_length(rand::thread_rng().gen_range
         (5, 64));
