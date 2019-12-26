@@ -14,70 +14,59 @@ use std::collections::HashSet;
 pub fn hex_fixed_xor(hex_input: &Vec<u8>, hex_key: &Vec<u8>) -> Vec<u8> {
     assert_eq!(hex_input.len(), hex_key.len());
 
-    let input: Vec<u8> = hex::hex_to_bytes(hex_input);
-    let key: Vec<u8> = hex::hex_to_bytes(hex_key);
+    let input = hex::hex_to_bytes(&hex_input);
+    let key = hex::hex_to_bytes(&hex_key);
 
     xor::fixed_xor(&input, &key)
 }
 
 pub fn find_single_byte_xor(input: &Vec<u8>) -> (char, f32, Vec<u8>) {
-    let mut best_key: char = 'a';
-    let mut best_score: f32 = -1_f32;
-    let mut best_result: Vec<u8> = vec![];
+    let perfect_score = 1f32;
+    let mut best = ('a', -1f32, vec![]);
 
     for character in human::ALPHABET.iter() {
-        let result: Vec<u8> = xor::single_byte_xor(&input, (*character as u32) as u8);
+        let (_, best_score, _) = best;
 
-        let score = calculate_human_resemblance_score(&result);
+        let xored = xor::single_byte_xor(&input, *character as u8);
+        let score = calculate_human_resemblance_score(&xored);
 
         if score > best_score {
-            best_key = *character;
-            best_score = score;
-            best_result = result.clone();
-        }
+            best = (*character, score, xored);
 
-        if best_score == 1f32 {
-            break;
+            if score == perfect_score {
+                break;
+            }
         }
     }
 
-    (best_key, best_score, best_result)
+    best
 }
 
 pub fn hex_find_single_byte_xor(hex_input: &Vec<u8>) -> (char, f32, Vec<u8>) {
-    find_single_byte_xor(&hex::hex_to_bytes(hex_input))
+    find_single_byte_xor(&hex::hex_to_bytes(&hex_input))
 }
 
 fn calculate_human_resemblance_score(input: &Vec<u8>) -> f32 {
-    let mut human_characters_count = 0;
-
-    for letter in input.iter() {
-        if human::ALPHABET.contains(&(*letter as char)) {
-            human_characters_count += 1;
-        }
-    }
+    let human_characters_count = input.iter()
+        .filter(|byte| human::ALPHABET.contains(&(**byte as char)))
+        .count();
 
     human_characters_count as f32 / input.len() as f32
 }
 
 fn find_most_human(candidates: Vec<Vec<u8>>) -> (char, f32, Vec<u8>, Vec<u8>) {
-    let mut best_key: char = 'a';
-    let mut best_score: f32 = -1_f32;
-    let mut best_result: Vec<u8> = vec![];
-    let mut best_candidate: Vec<u8> = vec![];
+    let mut most_human = ('a', -1f32, vec![], vec![]);
 
     for candidate in candidates {
+        let (_, best_score, _, _) = most_human;
         let (character, score, xored) = hex_find_single_byte_xor(&candidate);
 
         if score > best_score {
-            best_key = character;
-            best_score = score;
-            best_result = xored.clone();
-            best_candidate = candidate.clone();
+            most_human = (character, score, xored, candidate);
         }
     }
 
-    (best_key, best_score, best_result, best_candidate)
+    most_human
 }
 
 fn break_repeating_key_xor(cipher: &Vec<u8>, min_key_size: i32, max_key_size: i32) -> (Vec<u8>, Vec<u8>) {
@@ -115,20 +104,17 @@ fn break_repeating_key_xor(cipher: &Vec<u8>, min_key_size: i32, max_key_size: i3
         }
     }
 
-    let mut rows = Vec::new();
-    for _i in 0..best_key_size {
-        rows.push(Vec::new());
-    }
+    let mut rows = vec![vec![]; best_key_size as usize];
 
-    let rows_length = (cipher.len() as f32 / best_key_size as f32).ceil() as i32;
+    let rows_length = (cipher.len() as f32 / best_key_size as f32).ceil() as usize;
 
     for j in 0..best_key_size {
         for i in 0..rows_length {
-            if (i * best_key_size + j as i32) as usize >= cipher.len() {
+            if (i as i32 * best_key_size + j) as usize >= cipher.len() {
                 break;
             }
 
-            rows[j as usize].push(cipher[(i * best_key_size + j as i32) as usize]);
+            rows[j as usize].push(cipher[(i as i32 * best_key_size + j) as usize]);
         }
     }
 
@@ -138,7 +124,7 @@ fn break_repeating_key_xor(cipher: &Vec<u8>, min_key_size: i32, max_key_size: i3
         key.push(best_key as u8);
     }
 
-    let deciphered: Vec<u8> = xor::fixed_key_xor(&cipher, &key);
+    let deciphered = xor::fixed_key_xor(&cipher, &key);
 
     (key, deciphered)
 }
@@ -149,13 +135,10 @@ fn normalized_hamming_distance_in_bits(from: &Vec<u8>, to: &Vec<u8>) -> f32 {
 
 fn hamming_distance_in_bits(from: &Vec<u8>, to: &Vec<u8>) -> u32 {
     assert_eq!(from.len(), to.len());
-    let mut distance: u32 = 0;
 
-    for (i, character) in from.iter().enumerate() {
-        distance += bits_difference_count(*character, to[i]) as u32;
-    }
-
-    distance
+    from.iter().zip(to)
+        .map(|(from, to)| bits_difference_count(*from, *to))
+        .fold(0u32, |acc, difference| acc + difference as u32)
 }
 
 fn bits_difference_count(from: u8, to: u8) -> u8 {
@@ -178,31 +161,32 @@ fn bits_difference_count(from: u8, to: u8) -> u8 {
 }
 
 fn detect_aes_in_ecb_mode(cipher_candidates: Vec<Vec<u8>>) -> Vec<u8> {
-    let mut ciphers_as_blocks: Vec<Vec<Vec<u8>>> = Vec::new();
+    let block_size = 16;
+    let mut ciphers_as_blocks: Vec<Vec<Vec<u8>>> = vec![];
 
     for (i, cipher) in cipher_candidates.iter().enumerate() {
-        ciphers_as_blocks.push(vec![vec![0; 16]; cipher.len() / 16]);
+        ciphers_as_blocks.push(vec![vec![0; block_size]; cipher.len() / block_size]);
         for (j, byte) in cipher.iter().enumerate() {
-            ciphers_as_blocks[i][(j as f32 / 16 as f32).floor() as usize][j % 16] = *byte;
+            ciphers_as_blocks[i][(j as f32 / block_size as f32).floor() as usize][j % block_size] =
+                *byte;
         }
 
         let unique_cipher_parts = ciphers_as_blocks[i].iter().cloned()
             .collect::<HashSet<Vec<u8>>>();
 
         if unique_cipher_parts.len() < ciphers_as_blocks[i].len() {
-            return ciphers_as_blocks[i]
-                .iter()
-                .fold(Vec::new(), |acc, val| [acc.as_slice(), val.as_slice()].concat());
+            return ciphers_as_blocks[i].iter()
+                .fold(vec![], |acc, val| [&acc[..], &val[..]].concat());
         }
     }
 
-    vec![]
+    panic!("Unable to detect aes in ecb mode.");
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use aes::{BlockCipherMode};
+    use aes::BlockCipherMode;
 
     #[test]
     fn challenge1() {
@@ -228,9 +212,9 @@ mod tests {
             &vs!("1b37373331363f78151b7f2b783431333d78397828372d363c78373e783a393b3736");
         let expected = &vs!("Cooking MC's like a pound of bacon");
 
-        let (_key, _score, xored_result) = hex_find_single_byte_xor(input);
+        let (_, _, xored_result) = hex_find_single_byte_xor(input);
 
-        assert_eq!(xored_result, *expected);
+        assert_eq!(&xored_result, expected);
     }
 
     #[test]
@@ -238,7 +222,7 @@ mod tests {
         let lines = file_util::read_file_lines("./resources/4.txt");
         let expected = vs!("7b5a4215415d544115415d5015455447414c155c46155f4058455c5b523f");
 
-        let (_key, _score, _xored_result, candidate) = find_most_human(lines);
+        let (_, _, _, candidate) = find_most_human(lines);
 
         assert_eq!(candidate, expected);
     }
@@ -294,7 +278,7 @@ mod tests {
     fn challenge6() {
         let cipher = &file_util::read_base64_file_bytes("./resources/6.txt");
 
-        let (_key, deciphered) = &break_repeating_key_xor(cipher, 2, 40);
+        let (_, deciphered) = &break_repeating_key_xor(&cipher, 2, 40);
 
         assert!(deciphered.starts_with(&vs!("I'm back and I'm ringin' the bell")));
     }
@@ -304,7 +288,7 @@ mod tests {
         let cipher = &file_util::read_base64_file_bytes("./resources/7.txt");
         let key = &vs!("YELLOW SUBMARINE");
 
-        let deciphered = aes::decrypt_aes_128(cipher, key, &BlockCipherMode::ECB);
+        let deciphered = aes::decrypt_aes_128(&cipher, &key, &BlockCipherMode::ECB);
 
         assert!(deciphered.starts_with(&vs!("I'm back and I'm ringin' the bell")));
     }
@@ -312,10 +296,10 @@ mod tests {
     #[test]
     fn challenge8() {
         let lines = file_util::read_hex_file_lines("./resources/8.txt");
-        let expected = hex::hex_to_bytes(&vs!("d880619740a8a19b7840a8a31c810a3d08649af70dc06f4fd5d2d69c744cd283e2dd052f6b641dbf9d11b0348542bb5708649af70dc06f4fd5d2d69c744cd2839475c9dfdbc1d46597949d9c7e82bf5a08649af70dc06f4fd5d2d69c744cd28397a93eab8d6aecd566489154789a6b0308649af70dc06f4fd5d2d69c744cd283d403180c98c8f6db1f2a3f9c4040deb0ab51b29933f2c123c58386b06fba186a"));
+        let expected = &vs!("d880619740a8a19b7840a8a31c810a3d08649af70dc06f4fd5d2d69c744cd283e2dd052f6b641dbf9d11b0348542bb5708649af70dc06f4fd5d2d69c744cd2839475c9dfdbc1d46597949d9c7e82bf5a08649af70dc06f4fd5d2d69c744cd28397a93eab8d6aecd566489154789a6b0308649af70dc06f4fd5d2d69c744cd283d403180c98c8f6db1f2a3f9c4040deb0ab51b29933f2c123c58386b06fba186a");
 
         let actual_found = detect_aes_in_ecb_mode(lines);
 
-        assert_eq!(actual_found, expected);
+        assert_eq!(actual_found, hex::hex_to_bytes(expected));
     }
 }

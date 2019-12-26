@@ -2,6 +2,7 @@ use ::vs;
 use rand::Rng;
 use aes;
 use aes::BlockCipherMode;
+use std::collections::HashMap;
 
 pub fn encrypt_under_random_key(content: &Vec<u8>) -> (Vec<u8>, BlockCipherMode) {
     let key = aes::generate::generate_aes_128_key();
@@ -22,6 +23,52 @@ pub fn encrypt_under_random_key(content: &Vec<u8>) -> (Vec<u8>, BlockCipherMode)
 
     (cipher, mode)
 }
+
+fn prepend_and_append(input: &Vec<u8>) -> Vec<u8> {
+    let prefix = vs!("comment1=cooking%20MCs;userdata=");
+    let suffix = vs!(";comment2=%20like%20a%20pound%20of%20bacon");
+
+    let mut sanitized_input = Vec::with_capacity(input.len());
+
+    for byte in input {
+        if [';' as u8, '=' as u8].contains(byte) {
+            sanitized_input.push('\\' as u8);
+        }
+        sanitized_input.push(*byte);
+    }
+
+    [&prefix[..], &sanitized_input[..], &suffix[..]].concat()
+}
+
+fn cbc_encrypt_under_key(input: &Vec<u8>, key: &Vec<u8>) -> Vec<u8> {
+    aes::encrypt_aes_128(&input, &key, &BlockCipherMode::CBC(vec![vec![1u8; 4]; 4]))
+}
+
+fn cbc_decrypt_under_key(cipher: &Vec<u8>, key: &Vec<u8>, iv: &Vec<Vec<u8>>) -> bool {
+    let text = aes::decrypt_aes_128(&cipher, &key, &BlockCipherMode::CBC(iv.to_vec()));
+
+    //let map = encoded_message_to_map(&text);
+
+    false
+}
+
+/*fn encoded_message_to_map(message: &Vec<u8>) -> HashMap<String, String> {
+    let key_values: Vec<(&str, &str)> = message.split(";")
+        .collect::<Vec<&str>>()
+        .iter()
+        .map(|entry| {
+            let key_and_value = entry.split("=").collect::<Vec<&str>>();
+
+            (key_and_value[0], key_and_value[1])
+        }).collect();
+
+    let mut map = HashMap::new();
+    for (key, value) in key_values.iter() {
+        map.insert(key.to_string(), value.to_string());
+    }
+
+    map
+}*/
 
 #[cfg(test)]
 mod tests {
@@ -161,5 +208,12 @@ mod tests {
         let invalid_bytes = [&vs!("ICE ICE BABY")[..], &vec![0x01, 0x02, 0x03, 0x04][..]].concat();
 
         aes::validate_pkcs7_pad(&invalid_bytes);
+    }
+
+    #[test]
+    fn challenge16() {
+        let key = aes::generate::generate_aes_128_key();
+
+        let result = prepend_and_append(&vs!("userdata=;;"));
     }
 }
