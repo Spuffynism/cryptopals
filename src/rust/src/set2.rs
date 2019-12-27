@@ -3,6 +3,7 @@ use rand::Rng;
 use aes;
 use aes::BlockCipherMode;
 use std::collections::HashMap;
+use regex::Regex;
 
 pub fn encrypt_under_random_key(content: &Vec<u8>) -> (Vec<u8>, BlockCipherMode) {
     let key = aes::generate::generate_aes_128_key();
@@ -47,28 +48,19 @@ fn cbc_encrypt_under_key(input: &Vec<u8>, key: &Vec<u8>) -> Vec<u8> {
 fn cbc_decrypt_under_key(cipher: &Vec<u8>, key: &Vec<u8>, iv: &Vec<Vec<u8>>) -> bool {
     let text = aes::decrypt_aes_128(&cipher, &key, &BlockCipherMode::CBC(iv.to_vec()));
 
-    //let map = encoded_message_to_map(&text);
+    let map = encoded_message_to_map(&text);
 
     false
 }
 
-/*fn encoded_message_to_map(message: &Vec<u8>) -> HashMap<String, String> {
-    let key_values: Vec<(&str, &str)> = message.split(";")
-        .collect::<Vec<&str>>()
-        .iter()
-        .map(|entry| {
-            let key_and_value = entry.split("=").collect::<Vec<&str>>();
-
-            (key_and_value[0], key_and_value[1])
-        }).collect();
-
+fn encoded_message_to_map(message: &Vec<u8>) -> HashMap<String, String> {
     let mut map = HashMap::new();
-    for (key, value) in key_values.iter() {
-        map.insert(key.to_string(), value.to_string());
-    }
+
+
 
     map
-}*/
+}
+
 
 #[cfg(test)]
 mod tests {

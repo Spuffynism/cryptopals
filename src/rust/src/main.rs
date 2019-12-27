@@ -1,6 +1,7 @@
 extern crate core;
 extern crate rustc_serialize;
 extern crate rand;
+extern crate regex;
 
 mod profile;
 mod human;

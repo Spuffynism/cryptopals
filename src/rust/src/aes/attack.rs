@@ -29,7 +29,8 @@ fn detect_oracle_block_size<O>(oracle: &O, placeholder_byte: u8) -> usize where 
         for block_size in (8..64).rev() {
             let cipher_blocks = cipher.chunks(block_size);
             let cipher_blocks_count = cipher_blocks.len();
-            let unique_blocks = &cipher_blocks.into_iter().collect::<HashSet<&[u8]>>();
+            let unique_blocks: &HashSet<&[u8]> = &cipher_blocks.into_iter()
+                .collect::<HashSet<&[u8]>>();
 
             if unique_blocks.len() < cipher_blocks_count {
                 return block_size;
@@ -91,21 +92,28 @@ pub fn ecb_cut_and_paste(key: &Vec<u8>) -> Vec<u8> {
     let profile = profile_for(&initial_email);
     let profile_bytes: Vec<u8> = vs!(&profile);
 
-    let mut email_starting_index = 0;
-    for (i, _) in profile_bytes.iter().enumerate() {
-        if i < profile_bytes.len() - initial_email_bytes.len()
-            && profile_bytes[i..i + initial_email_bytes.len()] == initial_email_bytes[..] {
-            email_starting_index = i;
-            break;
+    let email_starting_index = {
+        let mut email_starting_index = 0;
+        for (i, _) in profile_bytes.iter().enumerate() {
+            if i < profile_bytes.len() - initial_email_bytes.len()
+                && profile_bytes[i..i + initial_email_bytes.len()] == initial_email_bytes[..] {
+                email_starting_index = i;
+                break;
+            }
         }
-    }
 
-    let first_email_bytes = &profile_bytes[email_starting_index..block_size];
-    let last_email_bytes = &profile_bytes[block_size..block_size + (initial_email_bytes.len() -
-        first_email_bytes.len())];
-    let admin_role = "admin".to_string();
-    let crafted_admin_block = aes::pkcs7_pad(&vs!(admin_role), block_size as u8);
-    let crafted_email_bytes = [first_email_bytes, &crafted_admin_block[..], last_email_bytes].concat();
+        email_starting_index
+    };
+
+    let crafted_email_bytes = {
+        let first_email_bytes = &profile_bytes[email_starting_index..block_size];
+        let last_email_bytes = &profile_bytes[block_size..block_size + (initial_email_bytes.len() -
+            first_email_bytes.len())];
+        let admin_role = "admin".to_string();
+        let crafted_admin_block = aes::pkcs7_pad(&vs!(admin_role), block_size as u8);
+
+        [first_email_bytes, &crafted_admin_block[..], last_email_bytes].concat()
+    };
     let crafted_profile = profile_for(&String::from_utf8(crafted_email_bytes).unwrap());
     let email_block_range = block_size..block_size * 2;
     let cipher_to_create_admin_block = aes::encrypt_aes_128(&vs!(crafted_profile), &key, &BlockCipherMode::ECB);
@@ -113,22 +121,23 @@ pub fn ecb_cut_and_paste(key: &Vec<u8>) -> Vec<u8> {
     let email_cipher_block = &cipher_to_create_admin_block[email_block_range];
 
     // make email so that "user" (from role=user) is first part of block
-    let role_equals_bytes = vs!("role=");
-    let mut role_starting_index = 0;
-    for (i, _) in profile_bytes.iter().enumerate() {
-        if i < profile_bytes.len() - role_equals_bytes.len()
-            && profile_bytes[i..i + role_equals_bytes.len()] == role_equals_bytes[..] {
-            role_starting_index = i;
-            break;
+    let crafted_final_email = {
+        let role_equals_bytes = vs!("role=");
+        let mut role_starting_index = 0;
+        for (i, _) in profile_bytes.iter().enumerate() {
+            if i < profile_bytes.len() - role_equals_bytes.len()
+                && profile_bytes[i..i + role_equals_bytes.len()] == role_equals_bytes[..] {
+                role_starting_index = i;
+                break;
+            }
         }
-    }
 
-    let necessary_additional_characters = block_size - role_equals_bytes.len() -
-        (role_starting_index % block_size);
-    let crafted_final_email: &[u8] = &[
-        &vec!['a' as u8; necessary_additional_characters][..],
-        &initial_email_bytes[..]
-    ].concat();
+        let necessary_additional_characters = block_size - role_equals_bytes.len() -
+            (role_starting_index % block_size);
+
+        &[&vec!['a' as u8; necessary_additional_characters][..], &initial_email_bytes[..]].concat()
+    };
+
     let crafted_profile_to_replace_role = profile_for(&String::from_utf8(crafted_final_email.to_vec()).unwrap());
     let cipher_to_replace_role = &mut aes::encrypt_aes_128(&vs!(crafted_profile_to_replace_role), &key, &BlockCipherMode::ECB);
 
@@ -160,42 +169,43 @@ pub fn byte_at_a_time_ecb_harder_decryption<O>(oracle: O) -> Vec<u8> where O: Fn
         .map(|chunk| chunk.to_vec())
         .collect::<Vec<Vec<u8>>>();
 
-    let mut block_index_in_which_ends_random_bytes = 0;
+    let mut uncontrolled_end_block_index = 0;
     for (i, block) in cipher_with_added_byte_blocks.iter().enumerate() {
         if block != &original_cipher_blocks[i] {
-            block_index_in_which_ends_random_bytes = i;
+            uncontrolled_end_block_index = i;
             break;
         }
     }
 
     // manipulating starting block
-    let mut necessary_padding_to_arrive_at_new_block = 0;
-    let mut last_block = original_cipher_blocks[block_index_in_which_ends_random_bytes].to_vec();
-    for possible_padding in 1..block_size + 1 {
-        let crafted_bytes = &vec![placeholder_byte; possible_padding];
+    let mut padding_to_arrive_at_new_block = 0;
+    let mut last_block = original_cipher_blocks[uncontrolled_end_block_index].to_vec();
+    for padding_amount in 1..block_size + 1 {
+        let crafted_bytes = &vec![placeholder_byte; padding_amount];
         let cipher = oracle(&crafted_bytes);
         let cipher_blocks = cipher
             .chunks(block_size)
             .map(|chunk| chunk.to_vec())
             .collect::<Vec<Vec<u8>>>();
-        let block = &cipher_blocks[block_index_in_which_ends_random_bytes];
+        let block = &cipher_blocks[uncontrolled_end_block_index];
 
-        // if previous pad is current pad, previous-pad's index is needed pad amount
+        // if previous pad is current pad, previous pad's index is needed pad amount
         if last_block[..] == block[..] {
-            necessary_padding_to_arrive_at_new_block = possible_padding - 1;
+            padding_to_arrive_at_new_block = padding_amount - 1;
             break;
         }
 
         last_block = block.to_vec();
     }
 
-    let prefix = vec![placeholder_byte; necessary_padding_to_arrive_at_new_block];
+    // create our crafted prefix to start at a manipulable block when doing byte-at-a-time
+    // decryption
+    let prefix = vec![placeholder_byte; padding_to_arrive_at_new_block];
 
-    let block_index_in_which_starts_controlled_bytes = if
-    necessary_padding_to_arrive_at_new_block == 0 {
-        block_index_in_which_ends_random_bytes
+    let block_index_in_which_starts_controlled_bytes = if padding_to_arrive_at_new_block == 0 {
+        uncontrolled_end_block_index
     } else {
-        block_index_in_which_ends_random_bytes + 1
+        uncontrolled_end_block_index + 1
     };
 
     byte_at_a_time_ecb_simple_decryption(&oracle, block_index_in_which_starts_controlled_bytes, &prefix)
@@ -204,7 +214,7 @@ pub fn byte_at_a_time_ecb_harder_decryption<O>(oracle: O) -> Vec<u8> where O: Fn
 /// Decrypts a cipher using its oracle, one byte at a time.
 pub fn byte_at_a_time_ecb_simple_decryption<O>(
     oracle: O,
-    block_index_in_which_starts_controlled_bytes: usize,
+    controlled_bytes_block_start_index: usize,
     prefix: &Vec<u8>,
 ) -> Vec<u8> where O: Fn(&Vec<u8>) -> Vec<u8> {
     let placeholder_byte = 'A' as u8;
@@ -216,7 +226,7 @@ pub fn byte_at_a_time_ecb_simple_decryption<O>(
 
     // brute-force cipher characters one-by-one by using crafted input
     let mut known_characters = Vec::new();
-    for i in (block_index_in_which_starts_controlled_bytes * block_size)..oracle(&prefix).len() {
+    for i in (controlled_bytes_block_start_index * block_size)..oracle(&prefix).len() {
         let current_block_index = (i as f32 / block_size as f32).floor() as usize;
         let start_of_block_index = current_block_index * block_size;
         let current_block_range = start_of_block_index..start_of_block_index + block_size;
