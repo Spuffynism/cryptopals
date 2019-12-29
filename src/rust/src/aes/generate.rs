@@ -1,8 +1,12 @@
 use rand::RngCore;
 
-// TODO(nich): Generate random iv
 pub fn generate_aes_128_cbc_iv() -> Vec<Vec<u8>> {
-    vec![vec![1u8; 4]; 4]
+    vec![
+        generate_bytes_for_length(4),
+        generate_bytes_for_length(4),
+        generate_bytes_for_length(4),
+        generate_bytes_for_length(4)
+    ]
 }
 
 pub fn generate_aes_128_key() -> Vec<u8> {

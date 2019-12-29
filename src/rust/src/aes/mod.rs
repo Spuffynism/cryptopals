@@ -260,45 +260,31 @@ fn sub_word(word: &[u8]) -> Vec<u8> {
 }
 
 pub fn pkcs7_pad(bytes: &Vec<u8>, to_length: u8) -> Vec<u8> {
-    let mut padded = vec![0; to_length as usize];
-    let pad = to_length - bytes.len() as u8;
+    assert!(to_length as usize >= bytes.len());
 
-    // copy initial bytes
-    for (i, byte) in bytes.iter().enumerate() {
-        padded[i] = *byte;
-    }
+    let pad_length = to_length - bytes.len() as u8;
 
-    // pad remaining bytes with length of pad.
-    for i in bytes.len()..to_length as usize {
-        padded[i] = pad;
-    }
-
-    padded
+    [&bytes[..], &vec![pad_length; pad_length as usize][..]].concat()
 }
 
 pub fn validate_pkcs7_pad(bytes: &Vec<u8>) {
-    let mut last_byte_of_bytes = 0u8;
-    let mut count_left = 0u8;
-    for (i, byte) in bytes.iter().enumerate().rev() {
-        if i == bytes.len() - 1 {
-            let byte_is_not_padding = *byte as usize >= bytes.len();
-            if byte_is_not_padding {
-                break;
-            }
+    assert!(bytes.len() >= 2);
+    let padding_length = *bytes.last().unwrap();
 
-            last_byte_of_bytes = *byte;
-            count_left = last_byte_of_bytes - 1;
-            continue;
-        }
-
-        if count_left != 0 && *byte == last_byte_of_bytes {
-            count_left -= 1;
-        } else if *byte == last_byte_of_bytes {
-            panic!("invalid padding");
-        }
+    let no_padding = padding_length as usize >= bytes.len();
+    if no_padding {
+        return;
     }
 
-    if count_left != 0 {
+    let pad = &bytes[bytes.len() - padding_length as usize..];
+    let pad_is_same = pad.is_empty() || pad.iter().all(|byte| *byte == padding_length);
+
+    if !pad_is_same {
+        panic!("invalid padding");
+    }
+
+    let too_much_padding = bytes[bytes.len() - padding_length as usize - 1] == padding_length;
+    if too_much_padding {
         panic!("invalid padding");
     }
 }

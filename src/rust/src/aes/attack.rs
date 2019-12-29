@@ -277,3 +277,98 @@ pub fn build_byte_at_a_time_harder_oracle<'a>(
         aes::encrypt_aes_128(&input, &key, &aes::BlockCipherMode::ECB)
     }
 }
+
+pub fn cbc_bitflip<O, P>(
+    oracle: O,
+    raw_oracle: P,
+    key: &Vec<u8>,
+    iv: &Vec<Vec<u8>>) -> Vec<u8>
+    where O: Fn(&Vec<u8>) -> Vec<u8>, P: Fn(&Vec<u8>) -> Vec<u8> {
+    let block_size = 16;
+
+    let trigger = &vec![0x01; block_size];
+    let sought_for = &[
+        &[0xff][..],
+        &vs!("admin")[..],
+        &[0xff][..],
+        &vs!("true")[..],
+        &[0xff][..],
+        &vec![0x01; 4][..]].concat();
+
+    let result = oracle(&[&trigger[..], &sought_for[..]].concat());
+
+    let mut xor_block = vec![];
+
+    for byte in result[2 * block_size..2 * block_size + block_size].iter() {
+        xor_block.push(*byte);
+    }
+
+    let letter_changes = vec![
+        (0, ';'),
+        (6, '='),
+        (11, ';')
+    ];
+    let mut substitutions: Vec<(usize, u8)> = vec![];
+    let mut current_cipher = vec![];
+    for (pos, change) in letter_changes.iter() {
+        for i in 0..=255 {
+            let manipulated_byte = ((xor_block[*pos as usize] as u32 + i as u32) % 256u32) as u8;
+            current_cipher = [
+                &result[..2 * block_size + *pos],
+                &[manipulated_byte][..],
+                &result[(2 * block_size) + *pos + 1..],
+            ].concat();
+
+            let text = aes::decrypt_aes_128(&current_cipher, &key, &BlockCipherMode::CBC(iv.to_vec()));
+
+            let as_string = String::from_utf8_lossy(&text);
+            if text[3 * block_size + *pos] == *change as u8 {
+                xor_block[*pos] = manipulated_byte;
+                break;
+            }
+        }
+    }
+
+
+    [
+        &result[..2 * block_size],
+        &xor_block[..],
+        &result[3 * block_size..],
+    ].concat()
+}
+
+pub fn build_cbc_bitflip_oracle<'a>(
+    key: &'a Vec<u8>,
+    mode: &'a BlockCipherMode,
+) -> impl Fn(&Vec<u8>) -> Vec<u8> + 'a {
+    move |crafted_input: &Vec<u8>| -> Vec<u8> {
+        let encoded_input = prepend_and_append(&crafted_input);
+
+        aes::encrypt_aes_128(&encoded_input, &key, &mode)
+    }
+}
+
+pub fn build_cbc_bitflip_raw_oracle<'a>(
+    key: &'a Vec<u8>,
+    mode: &'a BlockCipherMode,
+) -> impl Fn(&Vec<u8>) -> Vec<u8> + 'a {
+    move |crafted_input: &Vec<u8>| -> Vec<u8> {
+        aes::encrypt_aes_128(&crafted_input, &key, &mode)
+    }
+}
+
+fn prepend_and_append(input: &Vec<u8>) -> Vec<u8> {
+    let prefix = vs!("comment1=cooking%20MCs;userdata=");
+    let suffix = vs!(";comment2=%20like%20a%20pound%20of%20bacon");
+
+    let mut sanitized_input = Vec::with_capacity(input.len());
+
+    for byte in input {
+        if [';' as u8, '=' as u8].contains(byte) {
+            sanitized_input.push('\\' as u8);
+        }
+        sanitized_input.push(*byte);
+    }
+
+    [&prefix[..], &sanitized_input[..], &suffix[..]].concat()
+}

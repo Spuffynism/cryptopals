@@ -25,50 +25,19 @@ pub fn encrypt_under_random_key(content: &Vec<u8>) -> (Vec<u8>, BlockCipherMode)
     (cipher, mode)
 }
 
-fn prepend_and_append(input: &Vec<u8>) -> Vec<u8> {
-    let prefix = vs!("comment1=cooking%20MCs;userdata=");
-    let suffix = vs!(";comment2=%20like%20a%20pound%20of%20bacon");
-
-    let mut sanitized_input = Vec::with_capacity(input.len());
-
-    for byte in input {
-        if [';' as u8, '=' as u8].contains(byte) {
-            sanitized_input.push('\\' as u8);
-        }
-        sanitized_input.push(*byte);
-    }
-
-    [&prefix[..], &sanitized_input[..], &suffix[..]].concat()
-}
-
-fn cbc_encrypt_under_key(input: &Vec<u8>, key: &Vec<u8>) -> Vec<u8> {
-    aes::encrypt_aes_128(&input, &key, &BlockCipherMode::CBC(vec![vec![1u8; 4]; 4]))
-}
-
-fn cbc_decrypt_under_key(cipher: &Vec<u8>, key: &Vec<u8>, iv: &Vec<Vec<u8>>) -> bool {
+pub fn is_admin(cipher: &Vec<u8>, key: &Vec<u8>, iv: &Vec<Vec<u8>>) -> bool {
     let text = aes::decrypt_aes_128(&cipher, &key, &BlockCipherMode::CBC(iv.to_vec()));
+    let as_string = String::from_utf8_lossy(&text);
 
-    let map = encoded_message_to_map(&text);
-
-    false
+    as_string.contains(";admin=true;")
 }
-
-fn encoded_message_to_map(message: &Vec<u8>) -> HashMap<String, String> {
-    let mut map = HashMap::new();
-
-
-
-    map
-}
-
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use ::aes;
     use file_util;
-    use aes::BlockCipherMode;
-    use aes::attack::ecb_cut_and_paste;
+    use aes::{BlockCipherMode, attack};
 
     #[test]
     fn challenge9() {
@@ -136,7 +105,7 @@ mod tests {
     fn challenge13() {
         let key = aes::generate::generate_aes_128_key();
 
-        let cipher = ecb_cut_and_paste(&key);
+        let cipher = aes::attack::ecb_cut_and_paste(&key);
         let decrypted_encoded_profile = aes::decrypt_aes_128(&cipher, &key,
                                                              &BlockCipherMode::ECB);
 
@@ -205,7 +174,14 @@ mod tests {
     #[test]
     fn challenge16() {
         let key = aes::generate::generate_aes_128_key();
+        let iv = aes::generate::generate_aes_128_cbc_iv();
+        let mode = BlockCipherMode::CBC(iv.to_vec());
+        let oracle = aes::attack::build_cbc_bitflip_oracle(&key, &mode);
+        let raw_oracle = aes::attack::build_cbc_bitflip_raw_oracle(&key, &mode);
 
-        let result = prepend_and_append(&vs!("userdata=;;"));
+        let cipher = aes::attack::cbc_bitflip(&oracle, &raw_oracle, &key, &iv);
+        let is_admin = is_admin(&cipher, &key, &iv);
+
+        assert!(is_admin);
     }
 }
