@@ -278,12 +278,11 @@ pub fn build_byte_at_a_time_harder_oracle<'a>(
     }
 }
 
-pub fn cbc_bitflip<O, P>(
+pub fn cbc_bitflip<O>(
     oracle: O,
-    raw_oracle: P,
     key: &Vec<u8>,
     iv: &Vec<Vec<u8>>) -> Vec<u8>
-    where O: Fn(&Vec<u8>) -> Vec<u8>, P: Fn(&Vec<u8>) -> Vec<u8> {
+    where O: Fn(&Vec<u8>) -> Vec<u8> {
     let block_size = 16;
 
     let trigger = &vec![0x01; block_size];
@@ -308,12 +307,10 @@ pub fn cbc_bitflip<O, P>(
         (6, '='),
         (11, ';')
     ];
-    let mut substitutions: Vec<(usize, u8)> = vec![];
-    let mut current_cipher = vec![];
     for (pos, change) in letter_changes.iter() {
         for i in 0..=255 {
             let manipulated_byte = ((xor_block[*pos as usize] as u32 + i as u32) % 256u32) as u8;
-            current_cipher = [
+            let current_cipher = [
                 &result[..2 * block_size + *pos],
                 &[manipulated_byte][..],
                 &result[(2 * block_size) + *pos + 1..],
@@ -321,7 +318,6 @@ pub fn cbc_bitflip<O, P>(
 
             let text = aes::decrypt_aes_128(&current_cipher, &key, &BlockCipherMode::CBC(iv.to_vec()));
 
-            let as_string = String::from_utf8_lossy(&text);
             if text[3 * block_size + *pos] == *change as u8 {
                 xor_block[*pos] = manipulated_byte;
                 break;
@@ -345,15 +341,6 @@ pub fn build_cbc_bitflip_oracle<'a>(
         let encoded_input = prepend_and_append(&crafted_input);
 
         aes::encrypt_aes_128(&encoded_input, &key, &mode)
-    }
-}
-
-pub fn build_cbc_bitflip_raw_oracle<'a>(
-    key: &'a Vec<u8>,
-    mode: &'a BlockCipherMode,
-) -> impl Fn(&Vec<u8>) -> Vec<u8> + 'a {
-    move |crafted_input: &Vec<u8>| -> Vec<u8> {
-        aes::encrypt_aes_128(&crafted_input, &key, &mode)
     }
 }
 

@@ -2,8 +2,6 @@ use ::vs;
 use rand::Rng;
 use aes;
 use aes::BlockCipherMode;
-use std::collections::HashMap;
-use regex::Regex;
 
 pub fn encrypt_under_random_key(content: &Vec<u8>) -> (Vec<u8>, BlockCipherMode) {
     let key = aes::generate::generate_aes_128_key();
@@ -37,7 +35,7 @@ mod tests {
     use super::*;
     use ::aes;
     use file_util;
-    use aes::{BlockCipherMode, attack};
+    use aes::BlockCipherMode;
 
     #[test]
     fn challenge9() {
@@ -156,19 +154,20 @@ mod tests {
     }
 
     #[test]
-    #[should_panic]
     fn challenge15_too_long_padding_compared_to_padding_byte() {
         let too_long_padding = [&vs!("ICE ICE BABY")[..], &vec![0x04; 5][..]].concat();
 
-        aes::validate_pkcs7_pad(&too_long_padding);
+        assert_eq!(aes::validate_pkcs7_pad(&too_long_padding), Err("too much padding"));
     }
 
     #[test]
-    #[should_panic]
     fn challenge15_invalid_bytes() {
         let invalid_bytes = [&vs!("ICE ICE BABY")[..], &vec![0x01, 0x02, 0x03, 0x04][..]].concat();
 
-        aes::validate_pkcs7_pad(&invalid_bytes);
+        assert_eq!(
+            aes::validate_pkcs7_pad(&invalid_bytes),
+            Err("padding bytes are not all the same")
+        );
     }
 
     #[test]
@@ -177,9 +176,8 @@ mod tests {
         let iv = aes::generate::generate_aes_128_cbc_iv();
         let mode = BlockCipherMode::CBC(iv.to_vec());
         let oracle = aes::attack::build_cbc_bitflip_oracle(&key, &mode);
-        let raw_oracle = aes::attack::build_cbc_bitflip_raw_oracle(&key, &mode);
 
-        let cipher = aes::attack::cbc_bitflip(&oracle, &raw_oracle, &key, &iv);
+        let cipher = aes::attack::cbc_bitflip(&oracle, &key, &iv);
         let is_admin = is_admin(&cipher, &key, &iv);
 
         assert!(is_admin);

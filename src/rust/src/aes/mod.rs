@@ -267,26 +267,28 @@ pub fn pkcs7_pad(bytes: &Vec<u8>, to_length: u8) -> Vec<u8> {
     [&bytes[..], &vec![pad_length; pad_length as usize][..]].concat()
 }
 
-pub fn validate_pkcs7_pad(bytes: &Vec<u8>) {
+pub fn validate_pkcs7_pad(bytes: &Vec<u8>) -> Result<u8, &str> {
     assert!(bytes.len() >= 2);
     let padding_length = *bytes.last().unwrap();
 
     let no_padding = padding_length as usize >= bytes.len();
     if no_padding {
-        return;
+        return Ok(0x00u8);
     }
 
     let pad = &bytes[bytes.len() - padding_length as usize..];
     let pad_is_same = pad.is_empty() || pad.iter().all(|byte| *byte == padding_length);
 
     if !pad_is_same {
-        panic!("invalid padding");
+        return Err("padding bytes are not all the same");
     }
 
     let too_much_padding = bytes[bytes.len() - padding_length as usize - 1] == padding_length;
     if too_much_padding {
-        panic!("invalid padding");
+        return Err("too much padding");
     }
+
+    Ok(padding_length)
 }
 
 #[cfg(test)]
@@ -298,8 +300,8 @@ mod tests {
         let word: &[u8] = &[0, 1, 2, 3];
         let expected_word: &[u8] = &[1, 2, 3, 0];
 
-        let given_word = rot_word(word);
-        assert_eq!(given_word.as_slice(), expected_word);
+        let actual_word = rot_word(word);
+        assert_eq!(actual_word.as_slice(), expected_word);
     }
 
     #[test]
@@ -307,9 +309,9 @@ mod tests {
         let word: &[u8] = &[0, 1, 2, 3];
         let expected_word: &[u8] = &[0x63, 0x7c, 0x77, 0x7b];
 
-        let given_word = sub_word(word);
+        let actual_word = sub_word(word);
 
-        assert_eq!(given_word.as_slice(), expected_word);
+        assert_eq!(actual_word.as_slice(), expected_word);
     }
 
     #[test]
@@ -372,9 +374,9 @@ mod tests {
             &[0xb6, 0x63, 0x0c, 0xa6]
         ];
 
-        let given_key_schedule = key_expansion(key);
+        let actual_key_schedule = key_expansion(key);
 
-        assert_eq!(given_key_schedule.to_vec(), expected_key_schedule.to_vec());
+        assert_eq!(actual_key_schedule.to_vec(), expected_key_schedule.to_vec());
     }
 
     #[test]
@@ -466,9 +468,11 @@ mod tests {
             0x08, 0x09, 0x0a, 0x0b,
             0x0c, 0x0d, 0x0e, 0x0f
         ];
-        // TODO(nich): Use a randomly generated iv
-        let cipher = encrypt_aes_128(&raw, &key, &BlockCipherMode::CBC(vec![vec![1u8; 4]; 4]));
-        let actual_deciphered = decrypt_aes_128(&cipher, &key, &BlockCipherMode::CBC(vec![vec![1u8; 4]; 4]));
+
+        let iv = generate::generate_aes_128_cbc_iv();
+
+        let cipher = encrypt_aes_128(&raw, &key, &BlockCipherMode::CBC(iv.to_vec()));
+        let actual_deciphered = decrypt_aes_128(&cipher, &key, &BlockCipherMode::CBC(iv.to_vec()));
 
         assert_eq!(raw, actual_deciphered);
     }
