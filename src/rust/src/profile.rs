@@ -1,23 +1,3 @@
-use std::collections::HashMap;
-
-pub fn encoded_profile_to_map(encoded_profile: &String) -> HashMap<String, String> {
-    let key_values: Vec<(&str, &str)> = encoded_profile.split("&")
-        .collect::<Vec<&str>>()
-        .iter()
-        .map(|entry| {
-            let key_and_value = entry.split("=").collect::<Vec<&str>>();
-
-            (key_and_value[0], key_and_value[1])
-        }).collect();
-
-    let mut map = HashMap::new();
-    for (key, value) in key_values.iter() {
-        map.insert(key.to_string(), value.to_string());
-    }
-
-    map
-}
-
 pub fn profile_for(email: &String) -> String {
     let blacklist = ['&', '='];
 

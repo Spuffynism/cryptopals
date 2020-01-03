@@ -50,6 +50,7 @@ mod tests {
     use super::*;
 
     #[test]
+    #[ignore] // tests which use I/O are expensive and should therefore be skipped
     fn read_resource_lines_test() {
         let path = "./test_resources/test.txt";
         let expected_content: Vec<String> = vec![

@@ -10,7 +10,8 @@ pub fn generate_aes_128_cbc_iv() -> Vec<Vec<u8>> {
 }
 
 pub fn generate_aes_128_key() -> Vec<u8> {
-    generate_bytes_for_length(16)
+    let key_length = 16;
+    generate_bytes_for_length(key_length)
 }
 
 pub fn generate_bytes_for_length(length: usize) -> Vec<u8> {

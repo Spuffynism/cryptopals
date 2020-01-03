@@ -1,7 +1,7 @@
 use ::vs;
 use rand::Rng;
 use aes;
-use aes::BlockCipherMode;
+use aes::{BlockCipherMode, AESEncryptionOptions, Padding};
 
 pub fn encrypt_under_random_key(content: &Vec<u8>) -> (Vec<u8>, BlockCipherMode) {
     let key = aes::generate::generate_aes_128_key();
@@ -10,7 +10,7 @@ pub fn encrypt_under_random_key(content: &Vec<u8>) -> (Vec<u8>, BlockCipherMode)
 
     let padded_content: Vec<u8> = [prefix.clone(), content.clone(), suffix.clone()].concat();
 
-    let mode = match rand::random() {
+    let block_cipher_mode = match rand::random() {
         true => aes::BlockCipherMode::ECB,
         false => {
             let iv = aes::generate::generate_aes_128_cbc_iv();
@@ -18,9 +18,13 @@ pub fn encrypt_under_random_key(content: &Vec<u8>) -> (Vec<u8>, BlockCipherMode)
         }
     };
 
-    let cipher = aes::encrypt_aes_128(&padded_content, &key, &mode);
+    let cipher = aes::encrypt_aes_128(
+        &padded_content,
+        &key,
+        &AESEncryptionOptions::new(&block_cipher_mode, &Padding::PKCS7),
+    );
 
-    (cipher, mode)
+    (cipher, block_cipher_mode)
 }
 
 pub fn is_admin(cipher: &Vec<u8>, key: &Vec<u8>, iv: &Vec<Vec<u8>>) -> bool {
@@ -36,11 +40,12 @@ mod tests {
     use ::aes;
     use file_util;
     use aes::BlockCipherMode;
+    use aes::PaddingError::{PaddingNotConsistent, InvalidLastPaddingByte};
 
     #[test]
-    fn challenge9() {
+    fn challenge9_some_padding() {
         let message = vs!("YELLOW SUBMARINE");
-        let expected_result = [message.as_slice(), &[0x04, 0x04, 0x04, 0x04]].concat();
+        let expected_result = [&message[..], &vec![0x04u8; 4][..]].concat();
 
         let actual_result = aes::pkcs7_pad(&message, 20);
 
@@ -48,11 +53,15 @@ mod tests {
     }
 
     #[test]
-    fn challenge9_no_padding_needed() {
+    fn challenge9_full_block_padding_needed() {
+        let block_size = 16u8;
         let message = vs!("YELLOW SUBMARINE");
-        let expected_result = message.as_slice();
+        let expected_result = &[
+            &message[..],
+            &vec![block_size; block_size as usize][..]
+        ].concat();
 
-        let actual_result = aes::pkcs7_pad(&message, 16);
+        let actual_result = &aes::pkcs7_pad(&message, block_size);
 
         assert_eq!(actual_result, expected_result);
     }
@@ -107,7 +116,8 @@ mod tests {
         let decrypted_encoded_profile = aes::decrypt_aes_128(&cipher, &key,
                                                              &BlockCipherMode::ECB);
 
-        let result = String::from_utf8(decrypted_encoded_profile).unwrap();
+        // it is normal that the encoded profile is not a properly encoded utf-8 string
+        let result = String::from_utf8_lossy(&decrypted_encoded_profile);
         assert!(result.contains("uid=10&role=admin"));
     }
 
@@ -131,42 +141,58 @@ mod tests {
 
     #[test]
     fn challenge15_valid_case() {
+        let block_size = 16;
         let valid_case = &[&vs!("ICE ICE BABY")[..], &vec![0x04; 4][..]].concat();
 
-        let result = std::panic::catch_unwind(|| aes::validate_pkcs7_pad(valid_case));
+        let result = aes::validate_pkcs7_pad(valid_case, block_size);
         assert!(result.is_ok())
     }
 
     #[test]
-    fn challenge15_no_padding() {
-        let valid_case = vs!("ICE ICE BABY!!!!");
-
-        let result = std::panic::catch_unwind(|| aes::validate_pkcs7_pad(&valid_case));
-        assert!(result.is_ok())
-    }
-
-    #[test]
-    #[should_panic]
-    fn challenge15_too_short_padding_compared_to_padding_byte() {
-        let invalid_padding_length = [&vs!("ICE ICE BABY")[..], &vec![0x05; 4][..]].concat();
-
-        aes::validate_pkcs7_pad(&invalid_padding_length);
-    }
-
-    #[test]
-    fn challenge15_too_long_padding_compared_to_padding_byte() {
-        let too_long_padding = [&vs!("ICE ICE BABY")[..], &vec![0x04; 5][..]].concat();
-
-        assert_eq!(aes::validate_pkcs7_pad(&too_long_padding), Err("too much padding"));
-    }
-
-    #[test]
-    fn challenge15_invalid_bytes() {
-        let invalid_bytes = [&vs!("ICE ICE BABY")[..], &vec![0x01, 0x02, 0x03, 0x04][..]].concat();
+    fn challenge15_zero_padding_length() {
+        let block_size = 16;
+        let invalid_padding_length = [&vs!("ICE ICE BABY!!!")[..], &vec![0x00][..]].concat();
 
         assert_eq!(
-            aes::validate_pkcs7_pad(&invalid_bytes),
-            Err("padding bytes are not all the same")
+            aes::validate_pkcs7_pad(&invalid_padding_length, block_size),
+            Err(InvalidLastPaddingByte)
+        );
+    }
+
+    #[test]
+    fn challenge15_padding_length_bigger_than_block_size() {
+        let block_size = 16;
+        let invalid_padding_length = [
+            &vs!("ICE ICE BABY!!!")[..],
+            &vec![block_size + 1][..]
+        ].concat();
+
+        assert_eq!(
+            aes::validate_pkcs7_pad(&invalid_padding_length, block_size),
+            Err(InvalidLastPaddingByte)
+        );
+    }
+
+    #[test]
+    fn challenge15_padding_length_bigger_than_bytes() {
+        let block_size = 16;
+        let invalid_padding_length = [&vs!("ICE ICE BABY!!!")[..], &vec![0xff][..]].concat();
+
+        assert_eq!(
+            aes::validate_pkcs7_pad(&invalid_padding_length, block_size),
+            Err(InvalidLastPaddingByte)
+        );
+    }
+
+    #[test]
+    fn challenge15_inconsistent_padding() {
+        let block_size = 16;
+        let invalid_padding_length = [&vs!("ICE ICE BABY")[..], &vec![0x01, 0x02, 0x03, 0x04][..]]
+            .concat();
+
+        assert_eq!(
+            aes::validate_pkcs7_pad(&invalid_padding_length, block_size),
+            Err(PaddingNotConsistent)
         );
     }
 
@@ -175,7 +201,7 @@ mod tests {
         let key = aes::generate::generate_aes_128_key();
         let iv = aes::generate::generate_aes_128_cbc_iv();
         let mode = BlockCipherMode::CBC(iv.to_vec());
-        let oracle = aes::attack::build_cbc_bitflip_oracle(&key, &mode);
+        let oracle = aes::attack::build_cbc_bitflip_oracle(&key, mode);
 
         let cipher = aes::attack::cbc_bitflip(&oracle, &key, &iv);
         let is_admin = is_admin(&cipher, &key, &iv);

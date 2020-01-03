@@ -33,77 +33,71 @@ impl State {
         out
     }
 
-    pub fn xor_with_state(&self, other: &State) -> State {
+    pub fn xor_with_state(&mut self, other: &State) {
         self.xor(&other.data)
     }
 
-    pub fn xor(&self, data: &Vec<Vec<u8>>) -> State {
-        let mut xored_state: Vec<Vec<u8>> = vec![vec![0; 4]; aes::Nb];
+    pub fn xor(&mut self, data: &Vec<Vec<u8>>) {
         for r in 0..4 {
             for c in 0..aes::Nb {
-                xored_state[r][c] = self.data[r][c] ^ data[r][c];
+                self.data[r][c] ^= data[r][c];
             }
         }
-
-        State { data: xored_state }
     }
 
-    pub fn add_round_key(&self, round_key: &Vec<Vec<u8>>) -> State {
+    /// Transformation in the Cipher and Inverse Cipher in which a Round
+    /// Key is added to the State using an XOR operation. The length of a
+    /// Round Key equals the size of the State (i.e., for Nb = 4, the Round
+    /// Key length equals 128 bits/16 bytes).
+    pub fn add_round_key(&mut self, round_key: &Vec<Vec<u8>>) {
         self.xor(round_key)
     }
 
     /// Transformation in the Cipher that processes the State using a nonlinear byte
     /// substitution table (S-box) that operates on each of the State bytes
     /// independently.
-    pub fn sub_bytes(&self) -> State {
+    pub fn sub_bytes(&mut self) {
         self.sub_bytes_with_box(&aes::S_BOX)
     }
 
     /// Transformation in the Inverse Cipher that is the inverse of SubBytes
-    pub fn inv_sub_bytes(&self) -> State {
+    pub fn inv_sub_bytes(&mut self) {
         self.sub_bytes_with_box(&aes::INVERSE_S_BOX)
     }
 
-    fn sub_bytes_with_box(&self, substitution_box: &[u8; 256]) -> State {
-        let mut substituted_bytes: Vec<Vec<u8>> = vec![vec![0; 4]; aes::Nb];
-        for (i, row) in self.data.iter().enumerate() {
-            for (j, byte) in row.iter().enumerate() {
-                substituted_bytes[i][j] = substitution_box[*byte as usize];
+    fn sub_bytes_with_box(&mut self, substitution_box: &[u8; 256]) {
+        for row in self.data.iter_mut() {
+            for byte in row.iter_mut() {
+                *byte = substitution_box[*byte as usize];
             }
         }
-
-        State { data: substituted_bytes }
     }
 
     /// Transformation in the Cipher that processes the State by cyclically
     /// shifting the last three rows of the State by different offsets.
-    pub fn shift_rows(&self) -> State {
-        State {
-            data: vec![
-                vec![self.data[0][0], self.data[1][1], self.data[2][2], self.data[3][3]],
-                vec![self.data[1][0], self.data[2][1], self.data[3][2], self.data[0][3]],
-                vec![self.data[2][0], self.data[3][1], self.data[0][2], self.data[1][3]],
-                vec![self.data[3][0], self.data[0][1], self.data[1][2], self.data[2][3]],
-            ]
-        }
+    pub fn shift_rows(&mut self) {
+        self.data = vec![
+            vec![self.data[0][0], self.data[1][1], self.data[2][2], self.data[3][3]],
+            vec![self.data[1][0], self.data[2][1], self.data[3][2], self.data[0][3]],
+            vec![self.data[2][0], self.data[3][1], self.data[0][2], self.data[1][3]],
+            vec![self.data[3][0], self.data[0][1], self.data[1][2], self.data[2][3]],
+        ]
     }
 
     /// Transformation in the Inverse Cipher that is the inverse of ShiftRows
-    pub fn inv_shift_rows(&self) -> State {
-        State {
-            data: vec![
-                vec![self.data[0][0], self.data[3][1], self.data[2][2], self.data[1][3]],
-                vec![self.data[1][0], self.data[0][1], self.data[3][2], self.data[2][3]],
-                vec![self.data[2][0], self.data[1][1], self.data[0][2], self.data[3][3]],
-                vec![self.data[3][0], self.data[2][1], self.data[1][2], self.data[0][3]],
-            ]
-        }
+    pub fn inv_shift_rows(&mut self) {
+        self.data = vec![
+            vec![self.data[0][0], self.data[3][1], self.data[2][2], self.data[1][3]],
+            vec![self.data[1][0], self.data[0][1], self.data[3][2], self.data[2][3]],
+            vec![self.data[2][0], self.data[1][1], self.data[0][2], self.data[3][3]],
+            vec![self.data[3][0], self.data[2][1], self.data[1][2], self.data[0][3]],
+        ]
     }
 
     /// Transformation in the Cipher that takes all of the columns of the
     /// State and mixes their data (independently of one another) to
     /// produce new columns.
-    pub fn mix_columns(&self) -> State {
+    pub fn mix_columns(&mut self) {
         let fixed_polynomial = vec![
             vec![0x02, 0x03, 0x01, 0x01],
             vec![0x01, 0x02, 0x03, 0x01],
@@ -114,7 +108,7 @@ impl State {
     }
 
     /// Transformation in the Inverse Cipher that is the inverse of MixColumns
-    pub fn inv_mix_columns(&self) -> State {
+    pub fn inv_mix_columns(&mut self) {
         let fixed_polynomial = vec![
             vec![0x0e, 0x0b, 0x0d, 0x09],
             vec![0x09, 0x0e, 0x0b, 0x0d],
@@ -125,9 +119,8 @@ impl State {
         self.mix_columns_using_substitution_matrix(&fixed_polynomial)
     }
 
-    fn mix_columns_using_substitution_matrix(&self, substitution_matrix: &Vec<Vec<u8>>)
-                                             -> State {
-        let mut result = vec![vec![0; 4]; aes::Nb];
+    fn mix_columns_using_substitution_matrix(&mut self, substitution_matrix: &Vec<Vec<u8>>) {
+        let mut mixed_columns = vec![vec![0; 4]; aes::Nb];
         for c in 0..4 {
             for r in 0..4 {
                 let mut multiplications_xor = 0;
@@ -135,11 +128,11 @@ impl State {
                     multiplications_xor ^= math::multiply_in_g(substitution_matrix[r][i],
                                                                self.data[c][i])
                 }
-                result[c][r] = multiplications_xor
+                mixed_columns[c][r] = multiplications_xor
             }
         }
 
-        State { data: result }
+        self.data = mixed_columns
     }
 }
 
@@ -155,7 +148,7 @@ mod tests {
             vec![0xf3, 0x07, 0xa7, 0x8b],
             vec![0x4d, 0x2b, 0x30, 0xc5]
         ];
-        let state = State {
+        let mut state = State {
             data: vec![
                 vec![0x69, 0xc4, 0xe0, 0xd8],
                 vec![0x6a, 0x7b, 0x04, 0x30],
@@ -172,9 +165,9 @@ mod tests {
             ]
         };
 
-        let actual_state = state.add_round_key(&key_schedule);
+        state.add_round_key(&key_schedule);
 
-        assert_eq!(actual_state, expected_state);
+        assert_eq!(state, expected_state);
     }
 
     #[test]
@@ -182,7 +175,7 @@ mod tests {
 
     #[test]
     fn inv_mix_columns_test() {
-        let test_cases: Vec<(State, State)> = vec![
+        let mut test_cases = &mut [
             (State {
                 data: vec![
                     vec![0xbd, 0x6e, 0x7c, 0x3d],
@@ -215,15 +208,15 @@ mod tests {
             })
         ];
 
-        for (state, expected_state) in test_cases.iter() {
-            let actual_state = state.inv_mix_columns();
-            assert_eq!(actual_state, *expected_state);
+        for (state, expected_state) in test_cases.iter_mut() {
+            state.inv_mix_columns();
+            assert_eq!(&state, &expected_state);
         }
     }
 
     #[test]
     fn inv_shift_rows_test() {
-        let state = State {
+        let mut state = State {
             data: vec![
                 vec![0x7a, 0xd5, 0xfd, 0xa7],
                 vec![0x89, 0xef, 0x4e, 0x27],
@@ -240,14 +233,14 @@ mod tests {
             ]
         };
 
-        let actual_state = state.inv_shift_rows();
+        state.inv_shift_rows();
 
-        assert_eq!(actual_state, expected_state);
+        assert_eq!(state, expected_state);
     }
 
     #[test]
     fn inv_sub_bytes_test() {
-        let state = State {
+        let mut state = State {
             data: vec![
                 vec![0x7a, 0x9f, 0x10, 0x27],
                 vec![0x89, 0xd5, 0xf5, 0x0b],
@@ -264,8 +257,8 @@ mod tests {
             ]
         };
 
-        let actual_state = state.inv_sub_bytes();
+        state.inv_sub_bytes();
 
-        assert_eq!(actual_state, expected_state);
+        assert_eq!(state, expected_state);
     }
 }

@@ -42,7 +42,7 @@ pub fn find_single_byte_xor(input: &Vec<u8>) -> (char, f32, Vec<u8>) {
     best
 }
 
-pub fn hex_find_single_byte_xor(hex_input: &Vec<u8>) -> (char, f32, Vec<u8>) {
+pub fn hex_find_single_byte_xor(hex_input: &[u8]) -> (char, f32, Vec<u8>) {
     find_single_byte_xor(&hex::hex_to_bytes(&hex_input))
 }
 
@@ -54,15 +54,15 @@ fn calculate_human_resemblance_score(input: &Vec<u8>) -> f32 {
     human_characters_count as f32 / input.len() as f32
 }
 
-fn find_most_human(candidates: Vec<Vec<u8>>) -> (char, f32, Vec<u8>, Vec<u8>) {
+fn find_most_human(candidates: &Vec<Vec<u8>>) -> (char, f32, Vec<u8>, Vec<u8>) {
     let mut most_human = ('a', -1f32, vec![], vec![]);
 
-    for candidate in candidates {
+    for candidate in candidates.iter() {
         let (_, best_score, _, _) = most_human;
         let (character, score, xored) = hex_find_single_byte_xor(&candidate);
 
         if score > best_score {
-            most_human = (character, score, xored, candidate);
+            most_human = (character, score, xored, candidate.to_vec());
         }
     }
 
@@ -222,7 +222,7 @@ mod tests {
         let lines = file_util::read_file_lines("./resources/4.txt");
         let expected = vs!("7b5a4215415d544115415d5015455447414c155c46155f4058455c5b523f");
 
-        let (_, _, _, candidate) = find_most_human(lines);
+        let (_, _, _, candidate) = find_most_human(&lines);
 
         assert_eq!(candidate, expected);
     }

@@ -4,6 +4,8 @@
 /// https://en.wikipedia.org/wiki/Block_cipher_mode_of_operation
 
 use xor;
+use aes::PaddingError::{PaddingNotConsistent, InvalidLastPaddingByte};
+use aes::Padding::PKCS7;
 
 mod state;
 mod math;
@@ -82,9 +84,39 @@ static Rcon: [[u8; 4]; 10] = [
 ];
 
 #[derive(PartialEq, Debug)]
+pub struct AESEncryptionOptions<'a> {
+    block_cipher_mode: &'a BlockCipherMode,
+    padding: &'a Padding,
+}
+
+impl<'a> AESEncryptionOptions<'a> {
+    pub fn new(block_cipher_mode: &'a BlockCipherMode, padding: &'a Padding) -> Self {
+        AESEncryptionOptions {
+            block_cipher_mode,
+            padding,
+        }
+    }
+}
+
+impl Default for AESEncryptionOptions<'_> {
+    fn default() -> Self {
+        AESEncryptionOptions {
+            block_cipher_mode: &BlockCipherMode::ECB,
+            padding: &Padding::None,
+        }
+    }
+}
+
+#[derive(PartialEq, Debug)]
 pub enum BlockCipherMode {
     ECB,
     CBC(Vec<Vec<u8>>),
+}
+
+#[derive(PartialEq, Debug)]
+pub enum Padding {
+    PKCS7,
+    None,
 }
 
 /// At the start of the Cipher, the input is copied to the State array using the conventions
@@ -92,50 +124,51 @@ pub enum BlockCipherMode {
 /// implementing a round function 10, 12, or 14 times (depending on the key length), with the
 /// final round differing slightly from the first Nr -1 rounds. The final State is then copied to
 /// the output as described in Sec. 3.4.
-pub fn encrypt_aes_128(bytes: &Vec<u8>, key: &Vec<u8>, mode: &BlockCipherMode) -> Vec<u8> {
+pub fn encrypt_aes_128(bytes: &[u8], key: &[u8], options: &AESEncryptionOptions) -> Vec<u8> {
+    let block_size = 16;
+
     let w = key_expansion(key);
-    let parts = bytes_to_parts(bytes);
-    let mut cipher_parts: Vec<Vec<u8>> = Vec::with_capacity(parts.len());
+    let padded_bytes = &if options.padding == &PKCS7 {
+        pkcs7_pad(bytes, block_size)
+    } else {
+        bytes.to_vec()
+    };
+    let parts = bytes_to_parts(padded_bytes);
+
+    let mut cipher: Vec<u8> = Vec::with_capacity(bytes.len());
     let mut previous_state: state::State = state::State::empty();
 
     for (i, part) in parts.iter().enumerate() {
         let mut state = state::State::from_part(part);
-        match mode {
-            BlockCipherMode::CBC(iv) => {
-                state = if i == 0 {
-                    state.xor(&iv)
-                } else {
-                    state.xor_with_state(&previous_state)
-                };
-            }
-            BlockCipherMode::ECB => ()
+        if let BlockCipherMode::CBC(iv) = &options.block_cipher_mode {
+            if i == 0 {
+                state.xor(&iv);
+            } else {
+                state.xor_with_state(&previous_state);
+            };
         }
 
-        state = state.add_round_key(&w[0..Nb].to_vec());
+        state.add_round_key(&w[0..Nb].to_vec());
 
         for round in 1..Nr {
-            state = state.sub_bytes();
-            state = state.shift_rows();
-            state = state.mix_columns();
-            state = state.add_round_key(&w[round * Nb..(round + 1) * Nb].to_vec());
+            state.sub_bytes();
+            state.shift_rows();
+            state.mix_columns();
+            state.add_round_key(&w[round * Nb..(round + 1) * Nb].to_vec());
         }
 
-        state = state.sub_bytes();
-        state = state.shift_rows();
-        state = state.add_round_key(&w[Nr * Nb..(Nr + 1) * Nb].to_vec());
+        state.sub_bytes();
+        state.shift_rows();
+        state.add_round_key(&w[Nr * Nb..(Nr + 1) * Nb].to_vec());
 
-        match mode {
-            BlockCipherMode::CBC(_iv) => {
-                previous_state = state.clone();
-            }
-            BlockCipherMode::ECB => ()
+        if let BlockCipherMode::CBC(_iv) = &options.block_cipher_mode {
+            previous_state = state.clone();
         }
 
-        cipher_parts.push(state.to_block());
+        cipher.append(state.to_block().as_mut());
     }
 
-    cipher_parts.iter()
-        .fold(Vec::new(), |acc, line| [acc.as_slice(), line.as_slice()].concat())
+    cipher
 }
 
 /// The Cipher transformations in Sec. 5.1 can be inverted and then implemented in reverse order to
@@ -145,53 +178,48 @@ pub fn encrypt_aes_128(bytes: &Vec<u8>, key: &Vec<u8>, mode: &BlockCipherMode) -
 pub fn decrypt_aes_128(cipher: &Vec<u8>, key: &Vec<u8>, mode: &BlockCipherMode) -> Vec<u8> {
     let w = key_expansion(key);
     let parts = bytes_to_parts(cipher);
-    let mut deciphered_parts: Vec<Vec<u8>> = Vec::with_capacity(parts.len());
+    let mut deciphered: Vec<u8> = Vec::with_capacity(cipher.len());
     let mut previous_state = state::State::empty();
 
     for (i, part) in parts.iter().enumerate() {
         let mut state = state::State::from_part(part);
 
-        state = state.add_round_key(&w[Nr * Nb..(Nr + 1) * Nb].to_vec());
+        state.add_round_key(&w[Nr * Nb..(Nr + 1) * Nb].to_vec());
 
         for round in (1..Nr).rev() {
-            state = state.inv_shift_rows();
-            state = state.inv_sub_bytes();
-            state = state.add_round_key(&w[round * Nb..(round + 1) * Nb].to_vec());
-            state = state.inv_mix_columns();
+            state.inv_shift_rows();
+            state.inv_sub_bytes();
+            state.add_round_key(&w[round * Nb..(round + 1) * Nb].to_vec());
+            state.inv_mix_columns();
         }
 
-        state = state.inv_shift_rows();
-        state = state.inv_sub_bytes();
-        state = state.add_round_key(&w[0..Nb].to_vec());
+        state.inv_shift_rows();
+        state.inv_sub_bytes();
+        state.add_round_key(&w[0..Nb].to_vec());
 
-        match mode {
-            BlockCipherMode::CBC(iv) => {
-                state = if i == 0 {
-                    state.xor(&iv)
-                } else {
-                    state.xor_with_state(&previous_state)
-                };
-                previous_state = state::State::from_part(part);
-            }
-            BlockCipherMode::ECB => ()
+        if let BlockCipherMode::CBC(iv) = mode {
+            if i == 0 {
+                state.xor(&iv);
+            } else {
+                state.xor_with_state(&previous_state);
+            };
+            previous_state = state::State::from_part(part);
         }
 
-        deciphered_parts.push(state.to_block());
+        deciphered.append(state.to_block().as_mut());
     }
 
-    deciphered_parts.iter()
-        .fold(Vec::new(), |acc, line| [acc.as_slice(), line.as_slice()].concat())
+    remove_pkcs7_padding(&deciphered)
 }
 
-pub fn bytes_to_parts(bytes: &Vec<u8>) -> Vec<Vec<u8>> {
-    let mut parts = vec![vec![0; 16]; (bytes.len() as f32 / 16f32).ceil() as usize];
-    for (i, byte) in bytes.iter().enumerate() {
-        parts[(i as f32 / 16f32).floor() as usize][i % 16] = *byte;
-    }
+pub fn bytes_to_parts(bytes: &[u8]) -> Vec<Vec<u8>> {
+    let block_size = 16;
 
-    if bytes.len() % 16 != 0 {
-        let last_part = parts.len() - 1;
-        parts[last_part] = pkcs7_pad(&parts[last_part][..bytes.len() % 16 as usize].to_vec(), 16);
+    let mut parts = vec![
+        vec![0; block_size as usize]; (bytes.len() as f32 / block_size as f32).ceil() as usize
+    ];
+    for (i, byte) in bytes.iter().enumerate() {
+        parts[(i as f32 / block_size as f32).floor() as usize][i % block_size as usize] = *byte;
     }
 
     parts
@@ -227,21 +255,6 @@ fn key_expansion(key: &[u8]) -> Vec<Vec<u8>> {
     w
 }
 
-/// Transformation in the Cipher and Inverse Cipher in which a Round
-/// Key is added to the State using an XOR operation. The length of a
-/// Round Key equals the size of the State (i.e., for Nb = 4, the Round
-/// Key length equals 128 bits/16 bytes).
-fn add_round_key(state: &Vec<Vec<u8>>, round_key: &Vec<Vec<u8>>) -> Vec<Vec<u8>> {
-    let mut xored_state: Vec<Vec<u8>> = vec![vec![0; 4]; 4];
-    for r in 0..4 {
-        for c in 0..4 {
-            xored_state[r][c] = state[r][c] ^ round_key[r][c];
-        }
-    }
-
-    xored_state
-}
-
 /// Function used in the Key Expansion routine that takes a four-byte
 /// word and performs a cyclic permutation.
 fn rot_word(word: &[u8]) -> Vec<u8> {
@@ -259,36 +272,46 @@ fn sub_word(word: &[u8]) -> Vec<u8> {
     word.iter().map(|word| S_BOX[*word as usize]).collect()
 }
 
-pub fn pkcs7_pad(bytes: &Vec<u8>, to_length: u8) -> Vec<u8> {
-    assert!(to_length as usize >= bytes.len());
+/// see https://tools.ietf.org/html/rfc5652#section-6.3
+pub fn pkcs7_pad(bytes: &[u8], block_size: u8) -> Vec<u8> {
+    let mut pad_length = block_size - (bytes.len() as u8 % block_size);
 
-    let pad_length = to_length - bytes.len() as u8;
+    if pad_length == 0 {
+        pad_length = block_size;
+    }
 
     [&bytes[..], &vec![pad_length; pad_length as usize][..]].concat()
 }
 
-pub fn validate_pkcs7_pad(bytes: &Vec<u8>) -> Result<u8, &str> {
+#[derive(Debug, PartialEq)]
+pub enum PaddingError {
+    PaddingNotConsistent,
+    InvalidLastPaddingByte,
+}
+
+pub fn validate_pkcs7_pad(bytes: &[u8], block_size: u8) -> Result<(), PaddingError> {
     assert!(bytes.len() >= 2);
+    assert!(block_size >= 2);
+
     let padding_length = *bytes.last().unwrap();
 
-    let no_padding = padding_length as usize >= bytes.len();
-    if no_padding {
-        return Ok(0x00u8);
+    if padding_length == 0
+        || padding_length >= block_size
+        || padding_length as usize > bytes.len() {
+        return Err(InvalidLastPaddingByte);
     }
 
-    let pad = &bytes[bytes.len() - padding_length as usize..];
-    let pad_is_same = pad.is_empty() || pad.iter().all(|byte| *byte == padding_length);
+    let last_block = bytes.len() - padding_length as usize..;
+    let pad = &bytes[last_block];
 
-    if !pad_is_same {
-        return Err("padding bytes are not all the same");
+    match pad.iter().all(|byte| *byte == padding_length) {
+        true => Ok(()),
+        false => Err(PaddingNotConsistent)
     }
+}
 
-    let too_much_padding = bytes[bytes.len() - padding_length as usize - 1] == padding_length;
-    if too_much_padding {
-        return Err("too much padding");
-    }
-
-    Ok(padding_length)
+pub fn remove_pkcs7_padding(bytes: &[u8]) -> Vec<u8> {
+    bytes.to_vec()
 }
 
 #[cfg(test)]
@@ -424,7 +447,11 @@ mod tests {
             0xd8, 0xcd, 0xb7, 0x80,
             0x70, 0xb4, 0xc5, 0x5a
         ];
-        let actual_cipher = encrypt_aes_128(&raw, &key, &BlockCipherMode::ECB);
+        let actual_cipher = encrypt_aes_128(
+            &raw,
+            &key,
+            &AESEncryptionOptions::new(&BlockCipherMode::ECB, &Padding::None),
+        );
 
         assert_eq!(actual_cipher, expected_cipher);
     }
@@ -443,7 +470,11 @@ mod tests {
             0x08, 0x09, 0x0a, 0x0b,
             0x0c, 0x0d, 0x0e, 0x0f
         ];
-        let cipher = encrypt_aes_128(&raw, &key, &BlockCipherMode::ECB);
+        let cipher = encrypt_aes_128(
+            &raw,
+            &key,
+            &AESEncryptionOptions::new(&BlockCipherMode::ECB, &Padding::None),
+        );
         let actual_deciphered = decrypt_aes_128(&cipher, &key, &BlockCipherMode::ECB);
 
         assert_eq!(raw, actual_deciphered);
@@ -471,7 +502,11 @@ mod tests {
 
         let iv = generate::generate_aes_128_cbc_iv();
 
-        let cipher = encrypt_aes_128(&raw, &key, &BlockCipherMode::CBC(iv.to_vec()));
+        let cipher = encrypt_aes_128(
+            &raw,
+            &key,
+            &AESEncryptionOptions::new(&BlockCipherMode::CBC(iv.to_vec()), &Padding::None),
+        );
         let actual_deciphered = decrypt_aes_128(&cipher, &key, &BlockCipherMode::CBC(iv.to_vec()));
 
         assert_eq!(raw, actual_deciphered);

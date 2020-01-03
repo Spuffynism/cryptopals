@@ -1,4 +1,4 @@
-use aes::BlockCipherMode;
+use aes::{BlockCipherMode, AESEncryptionOptions, Padding};
 use std::collections::{HashSet, HashMap};
 use std::ops::Range;
 use ::{human, aes};
@@ -19,7 +19,7 @@ pub fn detect_block_cipher_mode(cipher: &Vec<u8>) -> BlockCipherMode {
     if unique_chunks.len() < chunks_count { BlockCipherMode::ECB } else { BlockCipherMode::CBC(vec![vec![0; 4]; 4]) }
 }
 
-fn detect_oracle_block_size<O>(oracle: &O, placeholder_byte: u8) -> usize where O: Fn(&Vec<u8>)
+fn detect_oracle_block_size<O>(oracle: &O, placeholder_byte: u8) -> usize where O: Fn(&[u8])
     -> Vec<u8> {
     for bytes_count in 1..64 * 8 {
         let repeated_bytes = vec![placeholder_byte; bytes_count];
@@ -41,8 +41,8 @@ fn detect_oracle_block_size<O>(oracle: &O, placeholder_byte: u8) -> usize where 
     panic!("Block size not in range.");
 }
 
-fn confirm_oracle_mode<O>(oracle: &O, bytes: &Vec<u8>, mode: &BlockCipherMode) -> () where O:
-Fn(&Vec<u8>) -> Vec<u8> {
+fn confirm_oracle_mode<O>(oracle: &O, bytes: &[u8], mode: &BlockCipherMode) -> () where O:
+Fn(&[u8]) -> Vec<u8> {
     let cipher = oracle(&bytes);
 
     let block_cipher_mode = &detect_block_cipher_mode(&cipher);
@@ -58,11 +58,11 @@ fn craft_short_block(block_size: usize, placeholder_byte: &u8, known_characters:
 }
 
 /// Populate the last byte map used to discover characters.
-fn populate_last_byte_map<O>(block: &Vec<u8>,
+fn populate_last_byte_map<O>(block: &[u8],
                              oracle: O,
                              current_block_range: &Range<usize>) ->
-                             HashMap<Vec<u8>, u8> where O: Fn(&Vec<u8>) -> Vec<u8> {
-    let mut last_byte_map: HashMap<Vec<u8>, u8> = HashMap::new();
+                             HashMap<Vec<u8>, u8> where O: Fn(&[u8]) -> Vec<u8> {
+    let mut last_byte_map: HashMap<Vec<u8>, u8> = HashMap::with_capacity(human::ALPHABET.len());
     for character in human::ALPHABET.iter() {
         let crafted_block = [
             &block[..],
@@ -76,12 +76,17 @@ fn populate_last_byte_map<O>(block: &Vec<u8>,
     last_byte_map
 }
 
-pub fn build_byte_at_a_time_simple_oracle<'a>(unknown_string: &'a Vec<u8>, key: &'a Vec<u8>) -> impl Fn(&Vec<u8>) ->
-Vec<u8> + 'a {
-    move |crafted_input: &Vec<u8>| -> Vec<u8> {
+pub fn build_byte_at_a_time_simple_oracle<'a>(
+    unknown_string: &'a Vec<u8>,
+    key: &'a Vec<u8>) -> impl Fn(&[u8]) -> Vec<u8> + 'a {
+    move |crafted_input: &[u8]| -> Vec<u8> {
         let input = &[&crafted_input[..], &unknown_string[..]].concat();
 
-        aes::encrypt_aes_128(&input, &key, &aes::BlockCipherMode::ECB)
+        aes::encrypt_aes_128(
+            &input,
+            &key,
+            &AESEncryptionOptions::new(&BlockCipherMode::ECB, &Padding::PKCS7),
+        )
     }
 }
 
@@ -92,18 +97,13 @@ pub fn ecb_cut_and_paste(key: &Vec<u8>) -> Vec<u8> {
     let profile = profile_for(&initial_email);
     let profile_bytes: Vec<u8> = vs!(&profile);
 
-    let email_starting_index = {
-        let mut email_starting_index = 0;
-        for (i, _) in profile_bytes.iter().enumerate() {
-            if i < profile_bytes.len() - initial_email_bytes.len()
-                && profile_bytes[i..i + initial_email_bytes.len()] == initial_email_bytes[..] {
-                email_starting_index = i;
-                break;
-            }
-        }
-
-        email_starting_index
-    };
+    let email_starting_index = profile_bytes.iter()
+        .enumerate()
+        .position(|(i, _)| {
+            i < profile_bytes.len() - initial_email_bytes.len()
+                && profile_bytes[i..i + initial_email_bytes.len()] == initial_email_bytes[..]
+        })
+        .unwrap();
 
     let crafted_email_bytes = {
         let first_email_bytes = &profile_bytes[email_starting_index..block_size];
@@ -116,21 +116,23 @@ pub fn ecb_cut_and_paste(key: &Vec<u8>) -> Vec<u8> {
     };
     let crafted_profile = profile_for(&String::from_utf8(crafted_email_bytes).unwrap());
     let email_block_range = block_size..block_size * 2;
-    let cipher_to_create_admin_block = aes::encrypt_aes_128(&vs!(crafted_profile), &key, &BlockCipherMode::ECB);
+    let cipher_to_create_admin_block = aes::encrypt_aes_128(
+        &vs!(crafted_profile),
+        &key,
+        &AESEncryptionOptions::new(&BlockCipherMode::ECB, &Padding::PKCS7),
+    );
 
     let email_cipher_block = &cipher_to_create_admin_block[email_block_range];
 
     // make email so that "user" (from role=user) is first part of block
     let crafted_final_email = {
         let role_equals_bytes = vs!("role=");
-        let mut role_starting_index = 0;
-        for (i, _) in profile_bytes.iter().enumerate() {
-            if i < profile_bytes.len() - role_equals_bytes.len()
-                && profile_bytes[i..i + role_equals_bytes.len()] == role_equals_bytes[..] {
-                role_starting_index = i;
-                break;
-            }
-        }
+        let role_starting_index = profile_bytes.iter()
+            .enumerate()
+            .position(|(i, _)| {
+                i < profile_bytes.len() - role_equals_bytes.len()
+                    && profile_bytes[i..i + role_equals_bytes.len()] == role_equals_bytes[..]
+            }).unwrap();
 
         let necessary_additional_characters = block_size - role_equals_bytes.len() -
             (role_starting_index % block_size);
@@ -139,7 +141,11 @@ pub fn ecb_cut_and_paste(key: &Vec<u8>) -> Vec<u8> {
     };
 
     let crafted_profile_to_replace_role = profile_for(&String::from_utf8(crafted_final_email.to_vec()).unwrap());
-    let cipher_to_replace_role = &mut aes::encrypt_aes_128(&vs!(crafted_profile_to_replace_role), &key, &BlockCipherMode::ECB);
+    let cipher_to_replace_role = &mut aes::encrypt_aes_128(
+        &vs!(crafted_profile_to_replace_role),
+        &key,
+        &AESEncryptionOptions::new(&BlockCipherMode::ECB, &Padding::PKCS7),
+    );
 
     let mut i = cipher_to_replace_role.len() - 1;
     for byte in email_cipher_block.iter().rev() {
@@ -150,7 +156,7 @@ pub fn ecb_cut_and_paste(key: &Vec<u8>) -> Vec<u8> {
     cipher_to_replace_role.to_vec()
 }
 
-pub fn byte_at_a_time_ecb_harder_decryption<O>(oracle: O) -> Vec<u8> where O: Fn(&Vec<u8>) -> Vec<u8> {
+pub fn byte_at_a_time_ecb_harder_decryption<O>(oracle: O) -> Vec<u8> where O: Fn(&[u8]) -> Vec<u8> {
     let placeholder_byte = 'A' as u8;
     let block_size = detect_oracle_block_size(&oracle, placeholder_byte);
     let repeated_bytes = vec![placeholder_byte; block_size * 8];
@@ -216,16 +222,18 @@ pub fn byte_at_a_time_ecb_simple_decryption<O>(
     oracle: O,
     controlled_bytes_block_start_index: usize,
     prefix: &Vec<u8>,
-) -> Vec<u8> where O: Fn(&Vec<u8>) -> Vec<u8> {
-    let placeholder_byte = 'A' as u8;
+) -> Vec<u8> where O: Fn(&[u8]) -> Vec<u8> {
+    let placeholder_byte = 'a' as u8;
 
     let block_size = detect_oracle_block_size(&oracle, placeholder_byte);
 
     let repeated_bytes = vec![placeholder_byte; block_size * 8];
     confirm_oracle_mode(&oracle, &repeated_bytes, &BlockCipherMode::ECB);
 
+    let mut known_characters = Vec::with_capacity(
+        oracle(&prefix).len() - (controlled_bytes_block_start_index * block_size)
+    );
     // brute-force cipher characters one-by-one by using crafted input
-    let mut known_characters = Vec::new();
     for i in (controlled_bytes_block_start_index * block_size)..oracle(&prefix).len() {
         let current_block_index = (i as f32 / block_size as f32).floor() as usize;
         let start_of_block_index = current_block_index * block_size;
@@ -249,14 +257,11 @@ pub fn byte_at_a_time_ecb_simple_decryption<O>(
 
         // get the block for which we have a correspondence in the map
         let current_block = &ciphered_crafted_input[current_block_range].to_vec();
-        match last_byte_map.get(current_block) {
-            None => {
-                // non-human or padding character was encountered
-                break;
-            }
-            Some(character) => {
-                known_characters.push(*character);
-            }
+        if let Some(character) = last_byte_map.get(current_block) {
+            known_characters.push(*character);
+        } else {
+            // non-human or padding character was encountered
+            break;
         }
     }
 
@@ -266,15 +271,19 @@ pub fn byte_at_a_time_ecb_simple_decryption<O>(
 pub fn build_byte_at_a_time_harder_oracle<'a>(
     random_prefix: &'a Vec<u8>,
     unknown_string: &'a Vec<u8>,
-    key: &'a Vec<u8>) -> impl Fn(&Vec<u8>) -> Vec<u8> + 'a {
-    move |crafted_input: &Vec<u8>| -> Vec<u8> {
+    key: &'a Vec<u8>) -> impl Fn(&[u8]) -> Vec<u8> + 'a {
+    move |crafted_input: &[u8]| -> Vec<u8> {
         let input = &[
             &random_prefix[..],
             &crafted_input[..],
             &unknown_string[..]
         ].concat();
 
-        aes::encrypt_aes_128(&input, &key, &aes::BlockCipherMode::ECB)
+        aes::encrypt_aes_128(
+            &input,
+            &key,
+            &AESEncryptionOptions::new(&BlockCipherMode::ECB, &Padding::PKCS7),
+        )
     }
 }
 
@@ -335,12 +344,16 @@ pub fn cbc_bitflip<O>(
 
 pub fn build_cbc_bitflip_oracle<'a>(
     key: &'a Vec<u8>,
-    mode: &'a BlockCipherMode,
+    block_cipher_mode: BlockCipherMode,
 ) -> impl Fn(&Vec<u8>) -> Vec<u8> + 'a {
     move |crafted_input: &Vec<u8>| -> Vec<u8> {
         let encoded_input = prepend_and_append(&crafted_input);
 
-        aes::encrypt_aes_128(&encoded_input, &key, &mode)
+        aes::encrypt_aes_128(
+            &encoded_input,
+            &key,
+            &AESEncryptionOptions::new(&block_cipher_mode, &Padding::None),
+        )
     }
 }
 
@@ -358,4 +371,74 @@ fn prepend_and_append(input: &Vec<u8>) -> Vec<u8> {
     }
 
     [&prefix[..], &sanitized_input[..], &suffix[..]].concat()
+}
+
+pub fn cbc_padding_attack<O>(original_cipher: &Vec<u8>, padding_oracle: O) -> Vec<u8>
+    where O: Fn(&Vec<u8>) -> bool {
+    let block_size = 16;
+
+    let before_last_block = &original_cipher[
+        original_cipher.len() - (block_size * 2)..original_cipher.len() - block_size
+        ];
+
+// for i in 0..16 { // bytes of before-last blocks
+    let mut breaking_padding_length = 0;
+    for padding_length in 0..=255 {
+        let modified_before_last_block = &[
+            &before_last_block[..before_last_block.len() - 1],
+            &vec![padding_length][..]
+        ].concat();
+
+        let modified_cipher = &[
+            &original_cipher[..original_cipher.len() - (block_size * 2)],
+            &modified_before_last_block[..],
+            &original_cipher[original_cipher.len() - block_size..]
+        ].concat();
+
+        let result = padding_oracle(&modified_cipher);
+        if result {
+            breaking_padding_length = padding_length;
+            break;
+        }
+        dbg!(result);
+    }
+
+    dbg!(breaking_padding_length);
+// }
+
+    vec![]
+}
+
+pub fn build_cbc_padding_oracle<'a>(
+    key: &'a Vec<u8>,
+    iv: &'a Vec<Vec<u8>>,
+) -> impl Fn(&Vec<u8>) -> bool + 'a {
+    move |cipher: &Vec<u8>| -> bool {
+        let cipher_with_iv_and_key = CipherWithIvAndKey {
+            cipher: cipher.to_vec(),
+            key: key.to_vec(),
+            iv: iv.to_vec(),
+        };
+
+        check_cipher_padding(&cipher_with_iv_and_key)
+    }
+}
+
+pub struct CipherWithIvAndKey {
+    pub cipher: Vec<u8>,
+    pub iv: Vec<Vec<u8>>,
+    pub key: Vec<u8>,
+}
+
+/// models the server's consumption of an encrypted session token, as if it was a cookie
+pub fn check_cipher_padding(cipher_with_iv_and_key: &CipherWithIvAndKey) -> bool {
+    let deciphered = aes::decrypt_aes_128(
+        &cipher_with_iv_and_key.cipher,
+        &cipher_with_iv_and_key.key,
+        &BlockCipherMode::CBC(cipher_with_iv_and_key.iv.to_vec()),
+    );
+
+    let block_size = 16;
+
+    aes::validate_pkcs7_pad(&deciphered, block_size).is_ok()
 }
