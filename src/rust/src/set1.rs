@@ -4,14 +4,13 @@ use std::f32;
 use rustc_serialize::base64::{STANDARD, ToBase64};
 
 use human;
-use ::vs;
 use xor;
 use file_util;
 use aes;
 use hex;
 use std::collections::HashSet;
 
-pub fn hex_fixed_xor(hex_input: &Vec<u8>, hex_key: &Vec<u8>) -> Vec<u8> {
+pub fn hex_fixed_xor(hex_input: &[u8], hex_key: &[u8]) -> Vec<u8> {
     assert_eq!(hex_input.len(), hex_key.len());
 
     let input = hex::hex_to_bytes(&hex_input);
@@ -20,7 +19,7 @@ pub fn hex_fixed_xor(hex_input: &Vec<u8>, hex_key: &Vec<u8>) -> Vec<u8> {
     xor::fixed_xor(&input, &key)
 }
 
-pub fn find_single_byte_xor(input: &Vec<u8>) -> (char, f32, Vec<u8>) {
+pub fn find_single_byte_xor(input: &[u8]) -> (char, f32, Vec<u8>) {
     let perfect_score = 1f32;
     let mut best = ('a', -1f32, vec![]);
 
@@ -46,7 +45,7 @@ pub fn hex_find_single_byte_xor(hex_input: &[u8]) -> (char, f32, Vec<u8>) {
     find_single_byte_xor(&hex::hex_to_bytes(&hex_input))
 }
 
-fn calculate_human_resemblance_score(input: &Vec<u8>) -> f32 {
+fn calculate_human_resemblance_score(input: &[u8]) -> f32 {
     let human_characters_count = input.iter()
         .filter(|byte| human::ALPHABET.contains(&(**byte as char)))
         .count();
@@ -69,7 +68,7 @@ fn find_most_human(candidates: &Vec<Vec<u8>>) -> (char, f32, Vec<u8>, Vec<u8>) {
     most_human
 }
 
-fn break_repeating_key_xor(cipher: &Vec<u8>, min_key_size: i32, max_key_size: i32) -> (Vec<u8>, Vec<u8>) {
+fn break_repeating_key_xor(cipher: &[u8], min_key_size: i32, max_key_size: i32) -> (Vec<u8>, Vec<u8>) {
     let mut best_key_size = 0;
     let mut best_normalized_hamming_distance = std::f32::MAX;
 
@@ -129,11 +128,11 @@ fn break_repeating_key_xor(cipher: &Vec<u8>, min_key_size: i32, max_key_size: i3
     (key, deciphered)
 }
 
-fn normalized_hamming_distance_in_bits(from: &Vec<u8>, to: &Vec<u8>) -> f32 {
+fn normalized_hamming_distance_in_bits(from: &[u8], to: &[u8]) -> f32 {
     hamming_distance_in_bits(from, to) as f32 / to.len() as f32
 }
 
-fn hamming_distance_in_bits(from: &Vec<u8>, to: &Vec<u8>) -> u32 {
+fn hamming_distance_in_bits(from: &[u8], to: &[u8]) -> u32 {
     assert_eq!(from.len(), to.len());
 
     from.iter().zip(to)
@@ -191,7 +190,7 @@ mod tests {
     #[test]
     fn challenge1() {
         let input =
-            &vs!("49276d206b696c6c696e6720796f757220627261696e206c696b65206120706f69736f6e6f7573206d757368726f6f6d");
+            "49276d206b696c6c696e6720796f757220627261696e206c696b65206120706f69736f6e6f7573206d757368726f6f6d".as_bytes();
         let expected: &str = "SSdtIGtpbGxpbmcgeW91ciBicmFpbiBsaWtlIGEgcG9pc29ub3VzIG11c2hyb29t";
 
         assert_eq!(hex::hex_to_bytes(input).to_base64(STANDARD), expected)
@@ -199,9 +198,9 @@ mod tests {
 
     #[test]
     fn challenge2() {
-        let input = &vs!("1c0111001f010100061a024b53535009181c");
-        let key = &vs!("686974207468652062756c6c277320657965");
-        let expected = &vs!("746865206b696420646f6e277420706c6179");
+        let input = "1c0111001f010100061a024b53535009181c".as_bytes();
+        let key = "686974207468652062756c6c277320657965".as_bytes();
+        let expected = "746865206b696420646f6e277420706c6179".as_bytes();
 
         assert_eq!(hex_fixed_xor(input, key), hex::hex_to_bytes(expected))
     }
@@ -209,18 +208,18 @@ mod tests {
     #[test]
     fn challenge3() {
         let input =
-            &vs!("1b37373331363f78151b7f2b783431333d78397828372d363c78373e783a393b3736");
-        let expected = &vs!("Cooking MC's like a pound of bacon");
+            "1b37373331363f78151b7f2b783431333d78397828372d363c78373e783a393b3736".as_bytes();
+        let expected = "Cooking MC's like a pound of bacon".as_bytes();
 
         let (_, _, xored_result) = hex_find_single_byte_xor(input);
 
-        assert_eq!(&xored_result, expected);
+        assert_eq!(&xored_result[..], expected);
     }
 
     #[test]
     fn challenge4() {
         let lines = file_util::read_file_lines("./resources/4.txt");
-        let expected = vs!("7b5a4215415d544115415d5015455447414c155c46155f4058455c5b523f");
+        let expected = "7b5a4215415d544115415d5015455447414c155c46155f4058455c5b523f".as_bytes();
 
         let (_, _, _, candidate) = find_most_human(&lines);
 
@@ -230,16 +229,16 @@ mod tests {
     #[test]
     fn challenge5() {
         let content =
-            &vs!("Burning 'em, if you ain't quick and nimble\nI go crazy when I hear a cymbal");
-        let key = &vs!("ICE");
-        let expected = &vs!("0b3637272a2b2e63622c2e69692a23693a2a3c6324202d623d63343c2a26226324272765272a282b2f20430a652e2c652a3124333a653e2b2027630c692b20283165286326302e27282f");
+            "Burning 'em, if you ain't quick and nimble\nI go crazy when I hear a cymbal".as_bytes();
+        let key = "ICE".as_bytes();
+        let expected = "0b3637272a2b2e63622c2e69692a23693a2a3c6324202d623d63343c2a26226324272765272a282b2f20430a652e2c652a3124333a653e2b2027630c692b20283165286326302e27282f".as_bytes();
 
         assert_eq!(xor::fixed_key_xor(content, key), hex::hex_to_bytes(expected));
     }
 
     #[test]
     fn hamming_distance_test() {
-        let test_cases = vec![
+        let test_cases = &[
             // wikipedia examples
             ("karolin", "kathrin", 9),
             ("karolin", "kerstin", 6),
@@ -247,16 +246,19 @@ mod tests {
             ("2173896", "2233796", 7),
             // cryptopals test case
             ("this is a test", "wokka wokka!!!", 37)
-        ];
+        ][..];
 
         for (from, to, expected_distance) in test_cases {
-            assert_eq!(hamming_distance_in_bits(&vs!(from), &vs!(to)), expected_distance);
+            assert_eq!(
+                hamming_distance_in_bits(from.as_bytes(), to.as_bytes()),
+                *expected_distance
+            );
         }
     }
 
     #[test]
     fn normalized_hamming_distance_test() {
-        let test_cases = vec![
+        let test_cases = &[
             // wikipedia examples
             ("karolin", "kathrin", 9),
             ("karolin", "kerstin", 6),
@@ -264,12 +266,12 @@ mod tests {
             ("2173896", "2233796", 7),
             // cryptopals test case
             ("this is a test", "wokka wokka!!!", 37)
-        ];
+        ][..];
 
         for (from, to, expected_hamming_distance) in test_cases {
             let expected_normalized_hamming_distance =
-                expected_hamming_distance as f32 / to.len() as f32;
-            assert_eq!(normalized_hamming_distance_in_bits(&vs!(from), &vs!(to)),
+                *expected_hamming_distance as f32 / to.len() as f32;
+            assert_eq!(normalized_hamming_distance_in_bits(from.as_bytes(), to.as_bytes()),
                        expected_normalized_hamming_distance);
         }
     }
@@ -280,23 +282,23 @@ mod tests {
 
         let (_, deciphered) = &break_repeating_key_xor(&cipher, 2, 40);
 
-        assert!(deciphered.starts_with(&vs!("I'm back and I'm ringin' the bell")));
+        assert!(deciphered.starts_with("I'm back and I'm ringin' the bell".as_bytes()));
     }
 
     #[test]
     fn challenge7() {
         let cipher = &file_util::read_base64_file_bytes("./resources/7.txt");
-        let key = &vs!("YELLOW SUBMARINE");
+        let key = &"YELLOW SUBMARINE".as_bytes();
 
-        let deciphered = aes::decrypt_aes_128(&cipher, &key, &BlockCipherMode::ECB);
+        let deciphered = aes::decrypt_aes_128(&cipher, key, &BlockCipherMode::ECB);
 
-        assert!(deciphered.starts_with(&vs!("I'm back and I'm ringin' the bell")));
+        assert!(deciphered.starts_with("I'm back and I'm ringin' the bell".as_bytes()));
     }
 
     #[test]
     fn challenge8() {
         let lines = file_util::read_hex_file_lines("./resources/8.txt");
-        let expected = &vs!("d880619740a8a19b7840a8a31c810a3d08649af70dc06f4fd5d2d69c744cd283e2dd052f6b641dbf9d11b0348542bb5708649af70dc06f4fd5d2d69c744cd2839475c9dfdbc1d46597949d9c7e82bf5a08649af70dc06f4fd5d2d69c744cd28397a93eab8d6aecd566489154789a6b0308649af70dc06f4fd5d2d69c744cd283d403180c98c8f6db1f2a3f9c4040deb0ab51b29933f2c123c58386b06fba186a");
+        let expected = "d880619740a8a19b7840a8a31c810a3d08649af70dc06f4fd5d2d69c744cd283e2dd052f6b641dbf9d11b0348542bb5708649af70dc06f4fd5d2d69c744cd2839475c9dfdbc1d46597949d9c7e82bf5a08649af70dc06f4fd5d2d69c744cd28397a93eab8d6aecd566489154789a6b0308649af70dc06f4fd5d2d69c744cd283d403180c98c8f6db1f2a3f9c4040deb0ab51b29933f2c123c58386b06fba186a".as_bytes();
 
         let actual_found = detect_aes_in_ecb_mode(lines);
 

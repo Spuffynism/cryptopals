@@ -1,12 +1,11 @@
 use std::fs;
 
-use ::vs;
 use hex;
 
 pub fn read_file_lines(path: &str) -> Vec<Vec<u8>> {
     read_resource_lines(path)
         .iter()
-        .map(|line| vs!(line))
+        .map(|line| line.as_bytes().to_vec())
         .collect::<Vec<Vec<u8>>>()
 }
 
@@ -19,7 +18,7 @@ pub fn read_file_bytes(path: &str) -> Vec<u8> {
 pub fn read_hex_file_lines(path: &str) -> Vec<Vec<u8>> {
     read_resource_lines(path)
         .iter()
-        .map(|line| hex::hex_to_bytes(&vs!(line)))
+        .map(|line| hex::hex_to_bytes(line.as_bytes()))
         .collect::<Vec<Vec<u8>>>()
 }
 

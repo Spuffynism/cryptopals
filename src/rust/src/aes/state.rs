@@ -7,7 +7,7 @@ pub struct State {
 }
 
 impl State {
-    pub fn from_part(part: &Vec<u8>) -> State {
+    pub fn from_part(part: &[u8]) -> State {
         let mut data = vec![vec![0u8; 4]; aes::Nb];
         for r in 0..4 {
             for c in 0..aes::Nb {

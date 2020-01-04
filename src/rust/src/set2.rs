@@ -1,14 +1,13 @@
-use ::vs;
 use rand::Rng;
 use aes;
 use aes::{BlockCipherMode, AESEncryptionOptions, Padding};
 
-pub fn encrypt_under_random_key(content: &Vec<u8>) -> (Vec<u8>, BlockCipherMode) {
+pub fn encrypt_under_random_key(content: &[u8]) -> (Vec<u8>, BlockCipherMode) {
     let key = aes::generate::generate_aes_128_key();
     let prefix = aes::generate::generate_bytes_for_length(rand::thread_rng().gen_range(5, 11));
     let suffix = aes::generate::generate_bytes_for_length(rand::thread_rng().gen_range(5, 11));
 
-    let padded_content: Vec<u8> = [prefix.clone(), content.clone(), suffix.clone()].concat();
+    let padded_content = [&prefix[..], &content[..], &suffix[..]].concat();
 
     let block_cipher_mode = match rand::random() {
         true => aes::BlockCipherMode::ECB,
@@ -27,7 +26,7 @@ pub fn encrypt_under_random_key(content: &Vec<u8>) -> (Vec<u8>, BlockCipherMode)
     (cipher, block_cipher_mode)
 }
 
-pub fn is_admin(cipher: &Vec<u8>, key: &Vec<u8>, iv: &Vec<Vec<u8>>) -> bool {
+pub fn is_admin(cipher: &[u8], key: &[u8], iv: &Vec<Vec<u8>>) -> bool {
     let text = aes::decrypt_aes_128(&cipher, &key, &BlockCipherMode::CBC(iv.to_vec()));
     let as_string = String::from_utf8_lossy(&text);
 
@@ -44,8 +43,8 @@ mod tests {
 
     #[test]
     fn challenge9_some_padding() {
-        let message = vs!("YELLOW SUBMARINE");
-        let expected_result = [&message[..], &vec![0x04u8; 4][..]].concat();
+        let message = "YELLOW SUBMARINE".as_bytes();
+        let expected_result = [&message[..], &[0x04u8; 4][..]].concat();
 
         let actual_result = aes::pkcs7_pad(&message, 20);
 
@@ -55,7 +54,7 @@ mod tests {
     #[test]
     fn challenge9_full_block_padding_needed() {
         let block_size = 16u8;
-        let message = vs!("YELLOW SUBMARINE");
+        let message = "YELLOW SUBMARINE".as_bytes();
         let expected_result = &[
             &message[..],
             &vec![block_size; block_size as usize][..]
@@ -69,13 +68,13 @@ mod tests {
     #[test]
     fn challenge10() {
         let cbc_cipher = file_util::read_base64_file_bytes("./resources/10.txt");
-        let key = vs!("YELLOW SUBMARINE");
+        let key = "YELLOW SUBMARINE".as_bytes();
         let iv = vec![vec![0x00; 4]; 4];
         let mode = BlockCipherMode::CBC(iv);
 
         let deciphered = aes::decrypt_aes_128(&cbc_cipher, &key, &mode);
 
-        assert!(deciphered.starts_with(&vs!("I'm back and I'm ringin' the bell")));
+        assert!(deciphered.starts_with("I'm back and I'm ringin' the bell".as_bytes()));
     }
 
     #[test]
@@ -104,8 +103,8 @@ mod tests {
         let oracle = aes::attack::build_byte_at_a_time_simple_oracle(&unknown_string, &key);
         let deciphered = aes::attack::byte_at_a_time_ecb_simple_decryption(oracle, 0, &vec![]);
 
-        assert!(deciphered.starts_with(&vs!("Rollin' in my 5.0\nWith")));
-        assert!(deciphered.ends_with(&vs!("No, I just drove by\n")));
+        assert!(deciphered.starts_with("Rollin' in my 5.0\nWith".as_bytes()));
+        assert!(deciphered.ends_with("No, I just drove by\n".as_bytes()));
     }
 
     #[test]
@@ -135,14 +134,14 @@ mod tests {
         );
         let deciphered = aes::attack::byte_at_a_time_ecb_harder_decryption(oracle);
 
-        assert!(deciphered.starts_with(&vs!("Rollin' in my 5.0\nWith")));
-        assert!(deciphered.ends_with(&vs!("No, I just drove by\n")));
+        assert!(deciphered.starts_with("Rollin' in my 5.0\nWith".as_bytes()));
+        assert!(deciphered.ends_with("No, I just drove by\n".as_bytes()));
     }
 
     #[test]
     fn challenge15_valid_case() {
         let block_size = 16;
-        let valid_case = &[&vs!("ICE ICE BABY")[..], &vec![0x04; 4][..]].concat();
+        let valid_case = &["ICE ICE BABY".as_bytes(), &vec![0x04; 4][..]].concat();
 
         let result = aes::validate_pkcs7_pad(valid_case, block_size);
         assert!(result.is_ok())
@@ -151,7 +150,7 @@ mod tests {
     #[test]
     fn challenge15_zero_padding_length() {
         let block_size = 16;
-        let invalid_padding_length = [&vs!("ICE ICE BABY!!!")[..], &vec![0x00][..]].concat();
+        let invalid_padding_length = ["ICE ICE BABY!!!".as_bytes(), &vec![0x00][..]].concat();
 
         assert_eq!(
             aes::validate_pkcs7_pad(&invalid_padding_length, block_size),
@@ -163,8 +162,8 @@ mod tests {
     fn challenge15_padding_length_bigger_than_block_size() {
         let block_size = 16;
         let invalid_padding_length = [
-            &vs!("ICE ICE BABY!!!")[..],
-            &vec![block_size + 1][..]
+            "ICE ICE BABY!!!".as_bytes(),
+            &[block_size + 1][..]
         ].concat();
 
         assert_eq!(
@@ -176,7 +175,7 @@ mod tests {
     #[test]
     fn challenge15_padding_length_bigger_than_bytes() {
         let block_size = 16;
-        let invalid_padding_length = [&vs!("ICE ICE BABY!!!")[..], &vec![0xff][..]].concat();
+        let invalid_padding_length = ["ICE ICE BABY!!!".as_bytes(), &vec![0xff][..]].concat();
 
         assert_eq!(
             aes::validate_pkcs7_pad(&invalid_padding_length, block_size),
@@ -187,7 +186,7 @@ mod tests {
     #[test]
     fn challenge15_inconsistent_padding() {
         let block_size = 16;
-        let invalid_padding_length = [&vs!("ICE ICE BABY")[..], &vec![0x01, 0x02, 0x03, 0x04][..]]
+        let invalid_padding_length = ["ICE ICE BABY".as_bytes(), &vec![0x01, 0x02, 0x03, 0x04][..]]
             .concat();
 
         assert_eq!(

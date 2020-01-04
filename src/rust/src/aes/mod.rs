@@ -175,7 +175,7 @@ pub fn encrypt_aes_128(bytes: &[u8], key: &[u8], options: &AESEncryptionOptions)
 /// produce a straightforward Inverse Cipher for the AES algorithm. The individual transformations
 /// used in the Inverse Cipher - InvShiftRows(), InvSubBytes(),InvMixColumns(),
 /// and AddRoundKey() – process the State and are described in the following subsections.
-pub fn decrypt_aes_128(cipher: &Vec<u8>, key: &Vec<u8>, mode: &BlockCipherMode) -> Vec<u8> {
+pub fn decrypt_aes_128(cipher: &[u8], key: &[u8], mode: &BlockCipherMode) -> Vec<u8> {
     let w = key_expansion(key);
     let parts = bytes_to_parts(cipher);
     let mut deciphered: Vec<u8> = Vec::with_capacity(cipher.len());

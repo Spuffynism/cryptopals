@@ -3,10 +3,9 @@ use std::collections::{HashSet, HashMap};
 use std::ops::Range;
 use ::{human, aes};
 use profile::profile_for;
-use ::vs;
 
 /// Detectes the block cipher mode of a cipher.
-pub fn detect_block_cipher_mode(cipher: &Vec<u8>) -> BlockCipherMode {
+pub fn detect_block_cipher_mode(cipher: &[u8]) -> BlockCipherMode {
     let chunks = cipher.chunks(16);
     let chunks_count = chunks.len();
 
@@ -52,7 +51,7 @@ Fn(&[u8]) -> Vec<u8> {
 }
 
 /// Crafts a one-byte short block used by the byte-by-byte oracle decryption
-fn craft_short_block(block_size: usize, placeholder_byte: &u8, known_characters: &Vec<u8>)
+fn craft_short_block(block_size: usize, placeholder_byte: &u8, known_characters: &[u8])
                      -> Vec<u8> {
     vec![*placeholder_byte; block_size - (known_characters.len() % block_size) - 1]
 }
@@ -90,12 +89,12 @@ pub fn build_byte_at_a_time_simple_oracle<'a>(
     }
 }
 
-pub fn ecb_cut_and_paste(key: &Vec<u8>) -> Vec<u8> {
+pub fn ecb_cut_and_paste(key: &[u8]) -> Vec<u8> {
     let initial_email = "foo@bar.com".to_string();
-    let initial_email_bytes: Vec<u8> = vs!(&initial_email);
+    let initial_email_bytes = initial_email.as_bytes();
     let block_size = 16;
     let profile = profile_for(&initial_email);
-    let profile_bytes: Vec<u8> = vs!(&profile);
+    let profile_bytes = profile.as_bytes();
 
     let email_starting_index = profile_bytes.iter()
         .enumerate()
@@ -110,14 +109,14 @@ pub fn ecb_cut_and_paste(key: &Vec<u8>) -> Vec<u8> {
         let last_email_bytes = &profile_bytes[block_size..block_size + (initial_email_bytes.len() -
             first_email_bytes.len())];
         let admin_role = "admin".to_string();
-        let crafted_admin_block = aes::pkcs7_pad(&vs!(admin_role), block_size as u8);
+        let crafted_admin_block = aes::pkcs7_pad(admin_role.as_bytes(), block_size as u8);
 
         [first_email_bytes, &crafted_admin_block[..], last_email_bytes].concat()
     };
     let crafted_profile = profile_for(&String::from_utf8(crafted_email_bytes).unwrap());
     let email_block_range = block_size..block_size * 2;
     let cipher_to_create_admin_block = aes::encrypt_aes_128(
-        &vs!(crafted_profile),
+        crafted_profile.as_bytes(),
         &key,
         &AESEncryptionOptions::new(&BlockCipherMode::ECB, &Padding::PKCS7),
     );
@@ -126,7 +125,7 @@ pub fn ecb_cut_and_paste(key: &Vec<u8>) -> Vec<u8> {
 
     // make email so that "user" (from role=user) is first part of block
     let crafted_final_email = {
-        let role_equals_bytes = vs!("role=");
+        let role_equals_bytes = "role=".as_bytes();
         let role_starting_index = profile_bytes.iter()
             .enumerate()
             .position(|(i, _)| {
@@ -142,7 +141,7 @@ pub fn ecb_cut_and_paste(key: &Vec<u8>) -> Vec<u8> {
 
     let crafted_profile_to_replace_role = profile_for(&String::from_utf8(crafted_final_email.to_vec()).unwrap());
     let cipher_to_replace_role = &mut aes::encrypt_aes_128(
-        &vs!(crafted_profile_to_replace_role),
+        crafted_profile_to_replace_role.as_bytes(),
         &key,
         &AESEncryptionOptions::new(&BlockCipherMode::ECB, &Padding::PKCS7),
     );
@@ -221,7 +220,7 @@ pub fn byte_at_a_time_ecb_harder_decryption<O>(oracle: O) -> Vec<u8> where O: Fn
 pub fn byte_at_a_time_ecb_simple_decryption<O>(
     oracle: O,
     controlled_bytes_block_start_index: usize,
-    prefix: &Vec<u8>,
+    prefix: &[u8],
 ) -> Vec<u8> where O: Fn(&[u8]) -> Vec<u8> {
     let placeholder_byte = 'a' as u8;
 
@@ -289,17 +288,17 @@ pub fn build_byte_at_a_time_harder_oracle<'a>(
 
 pub fn cbc_bitflip<O>(
     oracle: O,
-    key: &Vec<u8>,
+    key: &[u8],
     iv: &Vec<Vec<u8>>) -> Vec<u8>
-    where O: Fn(&Vec<u8>) -> Vec<u8> {
+    where O: Fn(&[u8]) -> Vec<u8> {
     let block_size = 16;
 
     let trigger = &vec![0x01; block_size];
     let sought_for = &[
         &[0xff][..],
-        &vs!("admin")[..],
+        "admin".as_bytes(),
         &[0xff][..],
-        &vs!("true")[..],
+        "true".as_bytes(),
         &[0xff][..],
         &vec![0x01; 4][..]].concat();
 
@@ -345,8 +344,8 @@ pub fn cbc_bitflip<O>(
 pub fn build_cbc_bitflip_oracle<'a>(
     key: &'a Vec<u8>,
     block_cipher_mode: BlockCipherMode,
-) -> impl Fn(&Vec<u8>) -> Vec<u8> + 'a {
-    move |crafted_input: &Vec<u8>| -> Vec<u8> {
+) -> impl Fn(&[u8]) -> Vec<u8> + 'a {
+    move |crafted_input: &[u8]| -> Vec<u8> {
         let encoded_input = prepend_and_append(&crafted_input);
 
         aes::encrypt_aes_128(
@@ -357,9 +356,9 @@ pub fn build_cbc_bitflip_oracle<'a>(
     }
 }
 
-fn prepend_and_append(input: &Vec<u8>) -> Vec<u8> {
-    let prefix = vs!("comment1=cooking%20MCs;userdata=");
-    let suffix = vs!(";comment2=%20like%20a%20pound%20of%20bacon");
+fn prepend_and_append(input: &[u8]) -> Vec<u8> {
+    let prefix = "comment1=cooking%20MCs;userdata=".as_bytes();
+    let suffix = ";comment2=%20like%20a%20pound%20of%20bacon".as_bytes();
 
     let mut sanitized_input = Vec::with_capacity(input.len());
 
@@ -373,8 +372,8 @@ fn prepend_and_append(input: &Vec<u8>) -> Vec<u8> {
     [&prefix[..], &sanitized_input[..], &suffix[..]].concat()
 }
 
-pub fn cbc_padding_attack<O>(original_cipher: &Vec<u8>, padding_oracle: O) -> Vec<u8>
-    where O: Fn(&Vec<u8>) -> bool {
+pub fn cbc_padding_attack<O>(original_cipher: &[u8], padding_oracle: O) -> Vec<u8>
+    where O: Fn(&[u8]) -> bool {
     let block_size = 16;
 
     let before_last_block = &original_cipher[
@@ -412,8 +411,8 @@ pub fn cbc_padding_attack<O>(original_cipher: &Vec<u8>, padding_oracle: O) -> Ve
 pub fn build_cbc_padding_oracle<'a>(
     key: &'a Vec<u8>,
     iv: &'a Vec<Vec<u8>>,
-) -> impl Fn(&Vec<u8>) -> bool + 'a {
-    move |cipher: &Vec<u8>| -> bool {
+) -> impl Fn(&[u8]) -> bool + 'a {
+    move |cipher: &[u8]| -> bool {
         let cipher_with_iv_and_key = CipherWithIvAndKey {
             cipher: cipher.to_vec(),
             key: key.to_vec(),
