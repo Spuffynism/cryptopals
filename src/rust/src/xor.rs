@@ -1,7 +1,7 @@
 pub fn fixed_xor(input: &[u8], key: &[u8]) -> Vec<u8> {
     assert_eq!(input.len(), key.len());
 
-    return fixed_key_xor(input, key);
+    fixed_key_xor(input, key)
 }
 
 pub fn single_byte_xor(input: &[u8], key: u8) -> Vec<u8> {
@@ -11,7 +11,7 @@ pub fn single_byte_xor(input: &[u8], key: u8) -> Vec<u8> {
         result.push(item ^ key);
     }
 
-    return result;
+    result
 }
 
 pub fn fixed_key_xor(input: &[u8], key: &[u8]) -> Vec<u8> {
@@ -21,15 +21,5 @@ pub fn fixed_key_xor(input: &[u8], key: &[u8]) -> Vec<u8> {
         result.push(item ^ key[i % key.len()]);
     }
 
-    return result;
+    result
 }
-
-/*pub fn fixed_key_xor_slice(input: &[u8], key: &[u8]) -> Vec<u8> {
-    let result: &mut [u8] = &mut vec![0; input.len()];
-
-    for (i, _) in input.iter().enumerate() {
-        result[i] = input[i] ^ key[i % key.len()];
-    }
-
-    result.to_vec()
-}*/

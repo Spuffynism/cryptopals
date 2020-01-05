@@ -3,7 +3,7 @@
 /// https://en.wikipedia.org/wiki/Rijndael_MixColumns#Implementation_example
 /// https://en.wikipedia.org/wiki/Block_cipher_mode_of_operation
 
-use xor;
+use ::xor;
 use aes::PaddingError::{PaddingNotConsistent, InvalidLastPaddingByte};
 use aes::Padding::PKCS7;
 
@@ -14,21 +14,21 @@ pub mod generate;
 
 /// Number of columns (32-bit words) comprising the State. For this standard, Nb = 4.
 #[allow(non_upper_case_globals)]
-static Nb: usize = 4;
+pub(crate) const Nb: usize = 4;
 
 /// Number of rounds, which is a function of Nk and Nb (which is fixed). For this implementation,
 /// Nr = 10. (because this is only aes-128)
 #[allow(non_upper_case_globals)]
-static Nr: usize = 10;
+const Nr: usize = 10;
 
 /// Number of 32-bit words comprising the Cipher Key. For this implementation, Nk = 4. (because
 /// this is only aes-128)
 #[allow(non_upper_case_globals)]
-static Nk: usize = 4;
+const Nk: usize = 4;
 
 /// Non-linear substitution table used in several byte substitution transformations and in the
 /// Key Expansion routine to perform a one-for-one substitution of a byte value.
-static S_BOX: [u8; 256] = [
+const S_BOX: [u8; 256] = [
     0x63, 0x7c, 0x77, 0x7b, 0xf2, 0x6b, 0x6f, 0xc5, 0x30, 0x01, 0x67, 0x2b, 0xfe, 0xd7, 0xab, 0x76,
     0xca, 0x82, 0xc9, 0x7d, 0xfa, 0x59, 0x47, 0xf0, 0xad, 0xd4, 0xa2, 0xaf, 0x9c, 0xa4, 0x72, 0xc0,
     0xb7, 0xfd, 0x93, 0x26, 0x36, 0x3f, 0xf7, 0xcc, 0x34, 0xa5, 0xe5, 0xf1, 0x71, 0xd8, 0x31, 0x15,
@@ -49,7 +49,7 @@ static S_BOX: [u8; 256] = [
 
 /// Inverse of the S-BOX. Used in the InvSubBytes step to perform reverse one-for-one substitution
 /// of a byte.
-static INVERSE_S_BOX: [u8; 256] = [
+const INVERSE_S_BOX: [u8; 256] = [
     0x52, 0x09, 0x6a, 0xd5, 0x30, 0x36, 0xa5, 0x38, 0xbf, 0x40, 0xa3, 0x9e, 0x81, 0xf3, 0xd7, 0xfb,
     0x7c, 0xe3, 0x39, 0x82, 0x9b, 0x2f, 0xff, 0x87, 0x34, 0x8e, 0x43, 0x44, 0xc4, 0xde, 0xe9, 0xcb,
     0x54, 0x7b, 0x94, 0x32, 0xa6, 0xc2, 0x23, 0x3d, 0xee, 0x4c, 0x95, 0x0b, 0x42, 0xfa, 0xc3, 0x4e,
@@ -70,7 +70,7 @@ static INVERSE_S_BOX: [u8; 256] = [
 
 /// Round constant word array.
 #[allow(non_upper_case_globals)]
-static Rcon: [[u8; 4]; 10] = [
+const Rcon: [[u8; 4]; 10] = [
     [0x01, 0x00, 0x00, 0x00],
     [0x02, 0x00, 0x00, 0x00],
     [0x04, 0x00, 0x00, 0x00],
@@ -84,8 +84,35 @@ static Rcon: [[u8; 4]; 10] = [
 ];
 
 #[derive(PartialEq, Debug)]
+pub struct Iv(pub [[u8; 4]; Nb]);
+
+impl Iv {
+    pub fn empty() -> Self {
+        Iv([[0; 4]; Nb])
+    }
+}
+
+pub struct Key(pub [u8; 16]);
+
+impl Key {
+    pub fn new_from_string(string: &str) -> Key {
+        Key(Key::key_from_string(string))
+    }
+
+    fn key_from_string(s: &str) -> [u8; 16] {
+        let mut out = [0u8; 16];
+        let bytes = s.as_bytes();
+        for (i, byte) in out.iter_mut().enumerate() {
+            *byte = bytes[i];
+        }
+
+        out
+    }
+}
+
+#[derive(PartialEq, Debug)]
 pub struct AESEncryptionOptions<'a> {
-    block_cipher_mode: &'a BlockCipherMode,
+    block_cipher_mode: &'a BlockCipherMode<'a>,
     padding: &'a Padding,
 }
 
@@ -108,9 +135,9 @@ impl Default for AESEncryptionOptions<'_> {
 }
 
 #[derive(PartialEq, Debug)]
-pub enum BlockCipherMode {
+pub enum BlockCipherMode<'a> {
     ECB,
-    CBC(Vec<Vec<u8>>),
+    CBC(&'a Iv),
 }
 
 #[derive(PartialEq, Debug)]
@@ -124,10 +151,10 @@ pub enum Padding {
 /// implementing a round function 10, 12, or 14 times (depending on the key length), with the
 /// final round differing slightly from the first Nr -1 rounds. The final State is then copied to
 /// the output as described in Sec. 3.4.
-pub fn encrypt_aes_128(bytes: &[u8], key: &[u8], options: &AESEncryptionOptions) -> Vec<u8> {
+pub fn encrypt_aes_128(bytes: &[u8], key: &Key, options: &AESEncryptionOptions) -> Vec<u8> {
     let block_size = 16;
 
-    let w = key_expansion(key);
+    let w = &key_expansion(key).0;
     let padded_bytes = &if options.padding == &PKCS7 {
         pkcs7_pad(bytes, block_size)
     } else {
@@ -142,24 +169,24 @@ pub fn encrypt_aes_128(bytes: &[u8], key: &[u8], options: &AESEncryptionOptions)
         let mut state = state::State::from_part(part);
         if let BlockCipherMode::CBC(iv) = &options.block_cipher_mode {
             if i == 0 {
-                state.xor(&iv);
+                state.xor_with_iv(&iv);
             } else {
                 state.xor_with_state(&previous_state);
             };
         }
 
-        state.add_round_key(&w[0..Nb].to_vec());
+        state.add_round_key(&w[0..Nb]);
 
         for round in 1..Nr {
             state.sub_bytes();
             state.shift_rows();
             state.mix_columns();
-            state.add_round_key(&w[round * Nb..(round + 1) * Nb].to_vec());
+            state.add_round_key(&w[round * Nb..(round + 1) * Nb]);
         }
 
         state.sub_bytes();
         state.shift_rows();
-        state.add_round_key(&w[Nr * Nb..(Nr + 1) * Nb].to_vec());
+        state.add_round_key(&w[Nr * Nb..(Nr + 1) * Nb]);
 
         if let BlockCipherMode::CBC(_iv) = &options.block_cipher_mode {
             previous_state = state.clone();
@@ -175,8 +202,8 @@ pub fn encrypt_aes_128(bytes: &[u8], key: &[u8], options: &AESEncryptionOptions)
 /// produce a straightforward Inverse Cipher for the AES algorithm. The individual transformations
 /// used in the Inverse Cipher - InvShiftRows(), InvSubBytes(),InvMixColumns(),
 /// and AddRoundKey() – process the State and are described in the following subsections.
-pub fn decrypt_aes_128(cipher: &[u8], key: &[u8], mode: &BlockCipherMode) -> Vec<u8> {
-    let w = key_expansion(key);
+pub fn decrypt_aes_128(cipher: &[u8], key: &Key, mode: &BlockCipherMode) -> Vec<u8> {
+    let w = &key_expansion(key).0;
     let parts = bytes_to_parts(cipher);
     let mut deciphered: Vec<u8> = Vec::with_capacity(cipher.len());
     let mut previous_state = state::State::empty();
@@ -184,22 +211,22 @@ pub fn decrypt_aes_128(cipher: &[u8], key: &[u8], mode: &BlockCipherMode) -> Vec
     for (i, part) in parts.iter().enumerate() {
         let mut state = state::State::from_part(part);
 
-        state.add_round_key(&w[Nr * Nb..(Nr + 1) * Nb].to_vec());
+        state.add_round_key(&w[Nr * Nb..(Nr + 1) * Nb]);
 
         for round in (1..Nr).rev() {
             state.inv_shift_rows();
             state.inv_sub_bytes();
-            state.add_round_key(&w[round * Nb..(round + 1) * Nb].to_vec());
+            state.add_round_key(&w[round * Nb..(round + 1) * Nb]);
             state.inv_mix_columns();
         }
 
         state.inv_shift_rows();
         state.inv_sub_bytes();
-        state.add_round_key(&w[0..Nb].to_vec());
+        state.add_round_key(&w[0..Nb]);
 
         if let BlockCipherMode::CBC(iv) = mode {
             if i == 0 {
-                state.xor(&iv);
+                state.xor_with_iv(iv);
             } else {
                 state.xor_with_state(&previous_state);
             };
@@ -225,34 +252,37 @@ pub fn bytes_to_parts(bytes: &[u8]) -> Vec<Vec<u8>> {
     parts
 }
 
+struct KeySchedule(pub [[u8; 4]; Nb * (Nr + 1)]);
+
 /// Routine used to generate a series of Round Keys from the Cipher Key.
 /// The Key Expansion generates a total of Nb (Nr + 1) words: the algorithm requires
 /// an initial set of Nb words, and each of the Nr rounds requires Nb words of key data. The
 /// resulting key schedule consists of a linear array of 4-byte words, denoted [wi ], with i in
 /// the range 0 <= i < Nb(Nr + 1).
-fn key_expansion(key: &[u8]) -> Vec<Vec<u8>> {
-    let mut w: Vec<Vec<u8>> = vec![vec![0; Nk]; Nb * (Nr + 1)];
+fn key_expansion(key: &Key) -> KeySchedule {
+    let mut w = [[0u8; Nk]; Nb * (Nr + 1)];
 
     for i in 0..Nk {
-        w[i] = key[4 * i..4 * i + 4].to_vec();
+        let key_part = &key.0[4 * i..4 * i + 4];
+        w[i] = [key_part[0], key_part[1], key_part[2], key_part[3]];
     }
 
-    #[allow(unused_assignments)]
-        let mut temp: Vec<u8> = Vec::with_capacity(Nk);
     for i in Nk..(Nb * (Nr + 1)) {
-        temp = w[i - 1].to_vec();
+        let mut temp = w[i - 1].to_vec();
         if i % Nk == 0 {
-            temp = xor::fixed_key_xor(
-                &sub_word(&rot_word(temp.as_slice())),
-                &Rcon[(i / Nk) - 1].to_vec(),
-            ).to_vec();
+            let xored = xor::fixed_key_xor(
+                &sub_word(&rot_word(&temp)),
+                &Rcon[(i / Nk) - 1],
+            );
+            temp = xored;
         } else if Nk > 6 && i % Nk == 4 {
-            temp = sub_word(temp.as_slice());
+            temp = sub_word(&temp);
         }
-        w[i] = xor::fixed_key_xor(&w[i - Nk], &temp).to_vec();
+        let key = xor::fixed_key_xor(&w[i - Nk][..], &temp);
+        w[i] = [key[0], key[1], key[2], key[3]];
     }
 
-    w
+    KeySchedule(w)
 }
 
 /// Function used in the Key Expansion routine that takes a four-byte
@@ -310,6 +340,7 @@ pub fn validate_pkcs7_pad(bytes: &[u8], block_size: u8) -> Result<(), PaddingErr
     }
 }
 
+// TODO
 pub fn remove_pkcs7_padding(bytes: &[u8]) -> Vec<u8> {
     bytes.to_vec()
 }
@@ -340,83 +371,83 @@ mod tests {
     #[test]
     fn key_expansion_test() {
         // as provided in official paper
-        let key: &[u8] = &[
+        let key = &Key([
             0x2b, 0x7e, 0x15, 0x16,
             0x28, 0xae, 0xd2, 0xa6,
             0xab, 0xf7, 0x15, 0x88,
             0x09, 0xcf, 0x4f, 0x3c
-        ];
+        ]);
         // also known as w
-        let expected_key_schedule = [
+        let expected_key_schedule: [[u8; 4]; 44] = [
             // copy of key
-            &[0x2b, 0x7e, 0x15, 0x16],
-            &[0x28, 0xae, 0xd2, 0xa6],
-            &[0xab, 0xf7, 0x15, 0x88],
-            &[0x09, 0xcf, 0x4f, 0x3c],
+            [0x2b, 0x7e, 0x15, 0x16],
+            [0x28, 0xae, 0xd2, 0xa6],
+            [0xab, 0xf7, 0x15, 0x88],
+            [0x09, 0xcf, 0x4f, 0x3c],
 
             // rest of expansion
-            &[0xa0, 0xfa, 0xfe, 0x17],
-            &[0x88, 0x54, 0x2c, 0xb1],
-            &[0x23, 0xa3, 0x39, 0x39],
-            &[0x2a, 0x6c, 0x76, 0x05],
-            &[0xf2, 0xc2, 0x95, 0xf2],
-            &[0x7a, 0x96, 0xb9, 0x43],
-            &[0x59, 0x35, 0x80, 0x7a],
-            &[0x73, 0x59, 0xf6, 0x7f],
-            &[0x3d, 0x80, 0x47, 0x7d],
-            &[0x47, 0x16, 0xfe, 0x3e],
-            &[0x1e, 0x23, 0x7e, 0x44],
-            &[0x6d, 0x7a, 0x88, 0x3b],
-            &[0xef, 0x44, 0xa5, 0x41],
-            &[0xa8, 0x52, 0x5b, 0x7f],
-            &[0xb6, 0x71, 0x25, 0x3b],
-            &[0xdb, 0x0b, 0xad, 0x00],
-            &[0xd4, 0xd1, 0xc6, 0xf8],
-            &[0x7c, 0x83, 0x9d, 0x87],
-            &[0xca, 0xf2, 0xb8, 0xbc],
-            &[0x11, 0xf9, 0x15, 0xbc],
-            &[0x6d, 0x88, 0xa3, 0x7a],
-            &[0x11, 0x0b, 0x3e, 0xfd],
-            &[0xdb, 0xf9, 0x86, 0x41],
-            &[0xca, 0x00, 0x93, 0xfd],
-            &[0x4e, 0x54, 0xf7, 0x0e],
-            &[0x5f, 0x5f, 0xc9, 0xf3],
-            &[0x84, 0xa6, 0x4f, 0xb2],
-            &[0x4e, 0xa6, 0xdc, 0x4f],
-            &[0xea, 0xd2, 0x73, 0x21],
-            &[0xb5, 0x8d, 0xba, 0xd2],
-            &[0x31, 0x2b, 0xf5, 0x60],
-            &[0x7f, 0x8d, 0x29, 0x2f],
-            &[0xac, 0x77, 0x66, 0xf3],
-            &[0x19, 0xfa, 0xdc, 0x21],
-            &[0x28, 0xd1, 0x29, 0x41],
-            &[0x57, 0x5c, 0x00, 0x6e],
-            &[0xd0, 0x14, 0xf9, 0xa8],
-            &[0xc9, 0xee, 0x25, 0x89],
-            &[0xe1, 0x3f, 0x0c, 0xc8],
-            &[0xb6, 0x63, 0x0c, 0xa6]
+            [0xa0, 0xfa, 0xfe, 0x17],
+            [0x88, 0x54, 0x2c, 0xb1],
+            [0x23, 0xa3, 0x39, 0x39],
+            [0x2a, 0x6c, 0x76, 0x05],
+            [0xf2, 0xc2, 0x95, 0xf2],
+            [0x7a, 0x96, 0xb9, 0x43],
+            [0x59, 0x35, 0x80, 0x7a],
+            [0x73, 0x59, 0xf6, 0x7f],
+            [0x3d, 0x80, 0x47, 0x7d],
+            [0x47, 0x16, 0xfe, 0x3e],
+            [0x1e, 0x23, 0x7e, 0x44],
+            [0x6d, 0x7a, 0x88, 0x3b],
+            [0xef, 0x44, 0xa5, 0x41],
+            [0xa8, 0x52, 0x5b, 0x7f],
+            [0xb6, 0x71, 0x25, 0x3b],
+            [0xdb, 0x0b, 0xad, 0x00],
+            [0xd4, 0xd1, 0xc6, 0xf8],
+            [0x7c, 0x83, 0x9d, 0x87],
+            [0xca, 0xf2, 0xb8, 0xbc],
+            [0x11, 0xf9, 0x15, 0xbc],
+            [0x6d, 0x88, 0xa3, 0x7a],
+            [0x11, 0x0b, 0x3e, 0xfd],
+            [0xdb, 0xf9, 0x86, 0x41],
+            [0xca, 0x00, 0x93, 0xfd],
+            [0x4e, 0x54, 0xf7, 0x0e],
+            [0x5f, 0x5f, 0xc9, 0xf3],
+            [0x84, 0xa6, 0x4f, 0xb2],
+            [0x4e, 0xa6, 0xdc, 0x4f],
+            [0xea, 0xd2, 0x73, 0x21],
+            [0xb5, 0x8d, 0xba, 0xd2],
+            [0x31, 0x2b, 0xf5, 0x60],
+            [0x7f, 0x8d, 0x29, 0x2f],
+            [0xac, 0x77, 0x66, 0xf3],
+            [0x19, 0xfa, 0xdc, 0x21],
+            [0x28, 0xd1, 0x29, 0x41],
+            [0x57, 0x5c, 0x00, 0x6e],
+            [0xd0, 0x14, 0xf9, 0xa8],
+            [0xc9, 0xee, 0x25, 0x89],
+            [0xe1, 0x3f, 0x0c, 0xc8],
+            [0xb6, 0x63, 0x0c, 0xa6]
         ];
 
         let actual_key_schedule = key_expansion(key);
 
-        assert_eq!(actual_key_schedule.to_vec(), expected_key_schedule.to_vec());
+        assert_eq!(actual_key_schedule.0.to_vec(), expected_key_schedule.to_vec());
     }
 
     #[test]
     fn decrypt_aes_128_in_ecb_mode_nist_test_case() {
-        let cipher = vec![
+        let cipher: &[u8] = &[
             0x69, 0xc4, 0xe0, 0xd8,
             0x6a, 0x7b, 0x04, 0x30,
             0xd8, 0xcd, 0xb7, 0x80,
             0x70, 0xb4, 0xc5, 0x5a
         ];
-        let key = vec![
+        let key = &Key([
             0x00, 0x01, 0x02, 0x03,
             0x04, 0x05, 0x06, 0x07,
             0x08, 0x09, 0x0a, 0x0b,
             0x0c, 0x0d, 0x0e, 0x0f
-        ];
-        let expected_raw = vec![
+        ]);
+        let expected_raw = &[
             0x0, 0x11, 0x22, 0x33,
             0x44, 0x55, 0x66, 0x77,
             0x88, 0x99, 0xaa, 0xbb,
@@ -429,19 +460,19 @@ mod tests {
 
     #[test]
     fn encrypt_aes_128_in_ecb_mode_test_case() {
-        let raw = vec![
+        let raw: &[u8] = &[
             0x0, 0x11, 0x22, 0x33,
             0x44, 0x55, 0x66, 0x77,
             0x88, 0x99, 0xaa, 0xbb,
             0xcc, 0xdd, 0xee, 0xff
         ];
-        let key = vec![
+        let key = &Key([
             0x00, 0x01, 0x02, 0x03,
             0x04, 0x05, 0x06, 0x07,
             0x08, 0x09, 0x0a, 0x0b,
             0x0c, 0x0d, 0x0e, 0x0f
-        ];
-        let expected_cipher = vec![
+        ]);
+        let expected_cipher = &[
             0x69, 0xc4, 0xe0, 0xd8,
             0x6a, 0x7b, 0x04, 0x30,
             0xd8, 0xcd, 0xb7, 0x80,
@@ -458,18 +489,18 @@ mod tests {
 
     #[test]
     fn encrypt_and_decrypt_ecb() {
-        let raw = vec![
+        let raw: &[u8] = &[
             0x0, 0x11, 0x22, 0x33,
             0x44, 0x55, 0x66, 0x77,
             0x88, 0x99, 0xaa, 0xbb,
             0xcc, 0xdd, 0xee, 0xff,
         ];
-        let key = vec![
+        let key = &Key([
             0x00, 0x01, 0x02, 0x03,
             0x04, 0x05, 0x06, 0x07,
             0x08, 0x09, 0x0a, 0x0b,
             0x0c, 0x0d, 0x0e, 0x0f
-        ];
+        ]);
         let cipher = encrypt_aes_128(
             &raw,
             &key,
@@ -477,12 +508,12 @@ mod tests {
         );
         let actual_deciphered = decrypt_aes_128(&cipher, &key, &BlockCipherMode::ECB);
 
-        assert_eq!(raw, actual_deciphered);
+        assert_eq!(raw, &actual_deciphered[..]);
     }
 
     #[test]
     fn encrypt_and_decrypt_cbc() {
-        let raw = vec![
+        let raw: &[u8] = &[
             0x0, 0x11, 0x22, 0x33,
             0x44, 0x55, 0x66, 0x77,
             0x88, 0x99, 0xaa, 0xbb,
@@ -493,22 +524,22 @@ mod tests {
             0x88, 0x99, 0xaa, 0xbb,
             0xcc, 0xdd, 0xee, 0xff,
         ];
-        let key = vec![
+        let key = &Key([
             0x00, 0x01, 0x02, 0x03,
             0x04, 0x05, 0x06, 0x07,
             0x08, 0x09, 0x0a, 0x0b,
             0x0c, 0x0d, 0x0e, 0x0f
-        ];
+        ]);
 
-        let iv = generate::generate_aes_128_cbc_iv();
+        let iv = &generate::generate_aes_128_cbc_iv();
 
         let cipher = encrypt_aes_128(
             &raw,
-            &key,
-            &AESEncryptionOptions::new(&BlockCipherMode::CBC(iv.to_vec()), &Padding::None),
+            key,
+            &AESEncryptionOptions::new(&BlockCipherMode::CBC(iv), &Padding::None),
         );
-        let actual_deciphered = decrypt_aes_128(&cipher, &key, &BlockCipherMode::CBC(iv.to_vec()));
+        let actual_deciphered = decrypt_aes_128(&cipher, key, &BlockCipherMode::CBC(iv));
 
-        assert_eq!(raw, actual_deciphered);
+        assert_eq!(raw, &actual_deciphered[..]);
     }
 }

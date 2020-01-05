@@ -2,7 +2,8 @@ use rand::Rng;
 use aes;
 use aes::{BlockCipherMode, AESEncryptionOptions, Padding};
 
-pub fn encrypt_under_random_key(content: &[u8]) -> (Vec<u8>, BlockCipherMode) {
+pub fn encrypt_under_random_key<'a>(content: &[u8], iv: &'a aes::Iv) -> (Vec<u8>,
+                                                                         BlockCipherMode<'a>) {
     let key = aes::generate::generate_aes_128_key();
     let prefix = aes::generate::generate_bytes_for_length(rand::thread_rng().gen_range(5, 11));
     let suffix = aes::generate::generate_bytes_for_length(rand::thread_rng().gen_range(5, 11));
@@ -12,7 +13,6 @@ pub fn encrypt_under_random_key(content: &[u8]) -> (Vec<u8>, BlockCipherMode) {
     let block_cipher_mode = match rand::random() {
         true => aes::BlockCipherMode::ECB,
         false => {
-            let iv = aes::generate::generate_aes_128_cbc_iv();
             aes::BlockCipherMode::CBC(iv)
         }
     };
@@ -26,8 +26,8 @@ pub fn encrypt_under_random_key(content: &[u8]) -> (Vec<u8>, BlockCipherMode) {
     (cipher, block_cipher_mode)
 }
 
-pub fn is_admin(cipher: &[u8], key: &[u8], iv: &Vec<Vec<u8>>) -> bool {
-    let text = aes::decrypt_aes_128(&cipher, &key, &BlockCipherMode::CBC(iv.to_vec()));
+pub fn is_admin(cipher: &[u8], key: &aes::Key, iv: &aes::Iv) -> bool {
+    let text = aes::decrypt_aes_128(&cipher, &key, &BlockCipherMode::CBC(iv));
     let as_string = String::from_utf8_lossy(&text);
 
     as_string.contains(";admin=true;")
@@ -67,12 +67,12 @@ mod tests {
 
     #[test]
     fn challenge10() {
-        let cbc_cipher = file_util::read_base64_file_bytes("./resources/10.txt");
-        let key = "YELLOW SUBMARINE".as_bytes();
-        let iv = vec![vec![0x00; 4]; 4];
-        let mode = BlockCipherMode::CBC(iv);
+        let cbc_cipher = &file_util::read_base64_file_bytes("./resources/10.txt");
+        let key = &aes::Key::new_from_string("YELLOW SUBMARINE");
+        let iv = &aes::Iv::empty();
+        let mode = &BlockCipherMode::CBC(iv);
 
-        let deciphered = aes::decrypt_aes_128(&cbc_cipher, &key, &mode);
+        let deciphered = aes::decrypt_aes_128(cbc_cipher, key, mode);
 
         assert!(deciphered.starts_with("I'm back and I'm ringin' the bell".as_bytes()));
     }
@@ -87,11 +87,13 @@ mod tests {
                 // (i.e.: 1, 2, 3, 4, 1, 2, 3, 4, 1, 2, 3, 4 , ...)
                 input.push(repeated_bytes[(j % repeated_bytes.len()) as usize]);
             }
-            let (cipher, expected_mode) = &encrypt_under_random_key(&input);
+            let iv = &aes::generate::generate_aes_128_cbc_iv();
+            let (cipher, expected_mode) = encrypt_under_random_key(&input, iv);
 
-            let found_mode = &aes::attack::detect_block_cipher_mode(&cipher);
+            let iv = &aes::Iv::empty();
+            let found_mode = aes::attack::detect_block_cipher_mode(&cipher, iv);
 
-            assert_eq!(std::mem::discriminant(found_mode), std::mem::discriminant(expected_mode))
+            assert_eq!(std::mem::discriminant(&found_mode), std::mem::discriminant(&expected_mode))
         }
     }
 
@@ -197,13 +199,13 @@ mod tests {
 
     #[test]
     fn challenge16() {
-        let key = aes::generate::generate_aes_128_key();
-        let iv = aes::generate::generate_aes_128_cbc_iv();
-        let mode = BlockCipherMode::CBC(iv.to_vec());
-        let oracle = aes::attack::build_cbc_bitflip_oracle(&key, mode);
+        let key = &aes::generate::generate_aes_128_key();
+        let iv = &aes::generate::generate_aes_128_cbc_iv();
+        let mode = &BlockCipherMode::CBC(iv);
+        let oracle = aes::attack::build_cbc_bitflip_oracle(key, mode);
 
-        let cipher = aes::attack::cbc_bitflip(&oracle, &key, &iv);
-        let is_admin = is_admin(&cipher, &key, &iv);
+        let cipher = aes::attack::cbc_bitflip(&oracle, key, iv);
+        let is_admin = is_admin(&cipher, key, iv);
 
         assert!(is_admin);
     }

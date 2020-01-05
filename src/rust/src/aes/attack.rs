@@ -1,11 +1,11 @@
-use aes::{BlockCipherMode, AESEncryptionOptions, Padding};
+use aes::{BlockCipherMode, AESEncryptionOptions, Padding, Key, Iv};
 use std::collections::{HashSet, HashMap};
 use std::ops::Range;
 use ::{human, aes};
 use profile::profile_for;
 
 /// Detectes the block cipher mode of a cipher.
-pub fn detect_block_cipher_mode(cipher: &[u8]) -> BlockCipherMode {
+pub fn detect_block_cipher_mode<'a>(cipher: &[u8], iv: &'a Iv) -> BlockCipherMode<'a> {
     let chunks = cipher.chunks(16);
     let chunks_count = chunks.len();
 
@@ -15,7 +15,11 @@ pub fn detect_block_cipher_mode(cipher: &[u8]) -> BlockCipherMode {
 
     let unique_chunks = &chunks.into_iter().collect::<HashSet<&[u8]>>();
 
-    if unique_chunks.len() < chunks_count { BlockCipherMode::ECB } else { BlockCipherMode::CBC(vec![vec![0; 4]; 4]) }
+    if unique_chunks.len() < chunks_count {
+        BlockCipherMode::ECB
+    } else {
+        BlockCipherMode::CBC(&iv)
+    }
 }
 
 fn detect_oracle_block_size<O>(oracle: &O, placeholder_byte: u8) -> usize where O: Fn(&[u8])
@@ -44,8 +48,9 @@ fn confirm_oracle_mode<O>(oracle: &O, bytes: &[u8], mode: &BlockCipherMode) -> (
 Fn(&[u8]) -> Vec<u8> {
     let cipher = oracle(&bytes);
 
-    let block_cipher_mode = &detect_block_cipher_mode(&cipher);
-    if block_cipher_mode != mode {
+    let iv = &aes::Iv::empty();
+    let block_cipher_mode = detect_block_cipher_mode(&cipher, iv);
+    if &block_cipher_mode != mode {
         panic!("Wrong block cipher mode.");
     }
 }
@@ -77,7 +82,7 @@ fn populate_last_byte_map<O>(block: &[u8],
 
 pub fn build_byte_at_a_time_simple_oracle<'a>(
     unknown_string: &'a Vec<u8>,
-    key: &'a Vec<u8>) -> impl Fn(&[u8]) -> Vec<u8> + 'a {
+    key: &'a Key) -> impl Fn(&[u8]) -> Vec<u8> + 'a {
     move |crafted_input: &[u8]| -> Vec<u8> {
         let input = &[&crafted_input[..], &unknown_string[..]].concat();
 
@@ -89,7 +94,7 @@ pub fn build_byte_at_a_time_simple_oracle<'a>(
     }
 }
 
-pub fn ecb_cut_and_paste(key: &[u8]) -> Vec<u8> {
+pub fn ecb_cut_and_paste(key: &Key) -> Vec<u8> {
     let initial_email = "foo@bar.com".to_string();
     let initial_email_bytes = initial_email.as_bytes();
     let block_size = 16;
@@ -270,7 +275,7 @@ pub fn byte_at_a_time_ecb_simple_decryption<O>(
 pub fn build_byte_at_a_time_harder_oracle<'a>(
     random_prefix: &'a Vec<u8>,
     unknown_string: &'a Vec<u8>,
-    key: &'a Vec<u8>) -> impl Fn(&[u8]) -> Vec<u8> + 'a {
+    key: &'a Key) -> impl Fn(&[u8]) -> Vec<u8> + 'a {
     move |crafted_input: &[u8]| -> Vec<u8> {
         let input = &[
             &random_prefix[..],
@@ -288,8 +293,8 @@ pub fn build_byte_at_a_time_harder_oracle<'a>(
 
 pub fn cbc_bitflip<O>(
     oracle: O,
-    key: &[u8],
-    iv: &Vec<Vec<u8>>) -> Vec<u8>
+    key: &Key,
+    iv: &Iv) -> Vec<u8>
     where O: Fn(&[u8]) -> Vec<u8> {
     let block_size = 16;
 
@@ -324,7 +329,7 @@ pub fn cbc_bitflip<O>(
                 &result[(2 * block_size) + *pos + 1..],
             ].concat();
 
-            let text = aes::decrypt_aes_128(&current_cipher, &key, &BlockCipherMode::CBC(iv.to_vec()));
+            let text = aes::decrypt_aes_128(&current_cipher, key, &BlockCipherMode::CBC(iv));
 
             if text[3 * block_size + *pos] == *change as u8 {
                 xor_block[*pos] = manipulated_byte;
@@ -342,8 +347,8 @@ pub fn cbc_bitflip<O>(
 }
 
 pub fn build_cbc_bitflip_oracle<'a>(
-    key: &'a Vec<u8>,
-    block_cipher_mode: BlockCipherMode,
+    key: &'a aes::Key,
+    block_cipher_mode: &'a BlockCipherMode<'a>,
 ) -> impl Fn(&[u8]) -> Vec<u8> + 'a {
     move |crafted_input: &[u8]| -> Vec<u8> {
         let encoded_input = prepend_and_append(&crafted_input);
@@ -351,7 +356,7 @@ pub fn build_cbc_bitflip_oracle<'a>(
         aes::encrypt_aes_128(
             &encoded_input,
             &key,
-            &AESEncryptionOptions::new(&block_cipher_mode, &Padding::None),
+            &AESEncryptionOptions::new(block_cipher_mode, &Padding::None),
         )
     }
 }
@@ -408,25 +413,24 @@ pub fn cbc_padding_attack<O>(original_cipher: &[u8], padding_oracle: O) -> Vec<u
     vec![]
 }
 
-pub fn build_cbc_padding_oracle<'a>(
-    key: &'a Vec<u8>,
-    iv: &'a Vec<Vec<u8>>,
+pub fn build_cbc_padding_oracle<'a>(key: &'a aes::Key, iv: &'a aes::Iv,
 ) -> impl Fn(&[u8]) -> bool + 'a {
     move |cipher: &[u8]| -> bool {
         let cipher_with_iv_and_key = CipherWithIvAndKey {
             cipher: cipher.to_vec(),
-            key: key.to_vec(),
-            iv: iv.to_vec(),
+            key,
+            iv,
         };
 
         check_cipher_padding(&cipher_with_iv_and_key)
     }
 }
 
-pub struct CipherWithIvAndKey {
+// TODO: Implement new for this
+pub struct CipherWithIvAndKey<'a> {
     pub cipher: Vec<u8>,
-    pub iv: Vec<Vec<u8>>,
-    pub key: Vec<u8>,
+    pub iv: &'a aes::Iv,
+    pub key: &'a aes::Key,
 }
 
 /// models the server's consumption of an encrypted session token, as if it was a cookie
@@ -434,7 +438,7 @@ pub fn check_cipher_padding(cipher_with_iv_and_key: &CipherWithIvAndKey) -> bool
     let deciphered = aes::decrypt_aes_128(
         &cipher_with_iv_and_key.cipher,
         &cipher_with_iv_and_key.key,
-        &BlockCipherMode::CBC(cipher_with_iv_and_key.iv.to_vec()),
+        &BlockCipherMode::CBC(cipher_with_iv_and_key.iv),
     );
 
     let block_size = 16;

@@ -288,9 +288,9 @@ mod tests {
     #[test]
     fn challenge7() {
         let cipher = &file_util::read_base64_file_bytes("./resources/7.txt");
-        let key = &"YELLOW SUBMARINE".as_bytes();
+        let key = aes::Key::new_from_string("YELLOW SUBMARINE");
 
-        let deciphered = aes::decrypt_aes_128(&cipher, key, &BlockCipherMode::ECB);
+        let deciphered = aes::decrypt_aes_128(&cipher, &key, &BlockCipherMode::ECB);
 
         assert!(deciphered.starts_with("I'm back and I'm ringin' the bell".as_bytes()));
     }
