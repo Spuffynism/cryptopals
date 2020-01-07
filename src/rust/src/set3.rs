@@ -8,7 +8,10 @@ pub fn generate_cbc_padding_oracle_cipher<'a>(
     key: &'a aes::Key,
     iv: &'a aes::Iv) ->
     CipherWithIvAndKey<'a> {
-    let selected_line = &lines[rand::thread_rng().gen_range(0, lines.len())];
+    //let selected_line = &lines[rand::thread_rng().gen_range(0, lines.len())];
+    // TODO(nich): Change this for prev line
+    let selected_line = &lines[2];
+
     let cipher = &aes::encrypt_aes_128(
         &selected_line,
         key,

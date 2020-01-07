@@ -1,5 +1,5 @@
-use aes::{BlockCipherMode, AESEncryptionOptions, Padding, Key, Iv};
-use std::collections::{HashSet, HashMap};
+use aes::{BlockCipherMode, AESEncryptionOptions, Padding, Key, Iv, PaddingError};
+use std::collections::{HashSet, HashMap, VecDeque};
 use std::ops::Range;
 use ::{human, aes};
 use profile::profile_for;
@@ -141,7 +141,7 @@ pub fn ecb_cut_and_paste(key: &Key) -> Vec<u8> {
         let necessary_additional_characters = block_size - role_equals_bytes.len() -
             (role_starting_index % block_size);
 
-        &[&vec!['a' as u8; necessary_additional_characters][..], &initial_email_bytes[..]].concat()
+        &[&vec![b'a'; necessary_additional_characters][..], &initial_email_bytes[..]].concat()
     };
 
     let crafted_profile_to_replace_role = profile_for(&String::from_utf8(crafted_final_email.to_vec()).unwrap());
@@ -161,7 +161,7 @@ pub fn ecb_cut_and_paste(key: &Key) -> Vec<u8> {
 }
 
 pub fn byte_at_a_time_ecb_harder_decryption<O>(oracle: O) -> Vec<u8> where O: Fn(&[u8]) -> Vec<u8> {
-    let placeholder_byte = 'A' as u8;
+    let placeholder_byte = b'A';
     let block_size = detect_oracle_block_size(&oracle, placeholder_byte);
     let repeated_bytes = vec![placeholder_byte; block_size * 8];
 
@@ -227,7 +227,7 @@ pub fn byte_at_a_time_ecb_simple_decryption<O>(
     controlled_bytes_block_start_index: usize,
     prefix: &[u8],
 ) -> Vec<u8> where O: Fn(&[u8]) -> Vec<u8> {
-    let placeholder_byte = 'a' as u8;
+    let placeholder_byte = b'a';
 
     let block_size = detect_oracle_block_size(&oracle, placeholder_byte);
 
@@ -368,8 +368,8 @@ fn prepend_and_append(input: &[u8]) -> Vec<u8> {
     let mut sanitized_input = Vec::with_capacity(input.len());
 
     for byte in input {
-        if [';' as u8, '=' as u8].contains(byte) {
-            sanitized_input.push('\\' as u8);
+        if [b';', b'='].contains(byte) {
+            sanitized_input.push(b'\\');
         }
         sanitized_input.push(*byte);
     }
@@ -381,34 +381,40 @@ pub fn cbc_padding_attack<O>(original_cipher: &[u8], padding_oracle: O) -> Vec<u
     where O: Fn(&[u8]) -> bool {
     let block_size = 16;
 
-    let before_last_block = &original_cipher[
+    let last_block = &original_cipher[original_cipher.len() - block_size..];
+    let penultimate_block = &original_cipher[
         original_cipher.len() - (block_size * 2)..original_cipher.len() - block_size
         ];
+    let antepenultimate_block = &original_cipher[..original_cipher.len() - (block_size * 2)];
 
-// for i in 0..16 { // bytes of before-last blocks
-    let mut breaking_padding_length = 0;
-    for padding_length in 0..=255 {
-        let modified_before_last_block = &[
-            &before_last_block[..before_last_block.len() - 1],
-            &vec![padding_length][..]
-        ].concat();
+    let mut block_result = VecDeque::new();
+    let mut intermediate_block = VecDeque::new();
+    for padding_length in 1u8..=15u8 {
+        for padding_byte in 0u8..=255u8 {
+            let modified_penultimate_block = &[
+                &penultimate_block[..penultimate_block.len() - padding_length as usize],
+                &vec![padding_byte][..],
+                &intermediate_block.iter().map(|v| v ^ padding_length).collect::<Vec<u8>>()[..]
+            ].concat();
 
-        let modified_cipher = &[
-            &original_cipher[..original_cipher.len() - (block_size * 2)],
-            &modified_before_last_block[..],
-            &original_cipher[original_cipher.len() - block_size..]
-        ].concat();
+            let modified_cipher = &[
+                &antepenultimate_block,
+                &modified_penultimate_block[..],
+                &last_block
+            ].concat();
 
-        let result = padding_oracle(&modified_cipher);
-        if result {
-            breaking_padding_length = padding_length;
-            break;
+            let padding_is_valid = padding_oracle(&modified_cipher);
+            if padding_is_valid {
+                dbg!(padding_byte);
+                intermediate_block.push_front(padding_byte ^ padding_length);
+                block_result.push_front(
+                    penultimate_block[0] ^ intermediate_block[0]);
+                break;
+            }
         }
-        dbg!(result);
     }
 
-    dbg!(breaking_padding_length);
-// }
+    dbg!(block_result);
 
     vec![]
 }
@@ -443,5 +449,11 @@ pub fn check_cipher_padding(cipher_with_iv_and_key: &CipherWithIvAndKey) -> bool
 
     let block_size = 16;
 
-    aes::validate_pkcs7_pad(&deciphered, block_size).is_ok()
+    match aes::validate_pkcs7_pad(&deciphered, block_size) {
+        Err(PaddingError) => false,
+        Ok(_) => {
+            dbg!(String::from_utf8_lossy(&deciphered));
+            true
+        }
+    }
 }

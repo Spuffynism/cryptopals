@@ -95,7 +95,7 @@ impl Iv {
 pub struct Key(pub [u8; 16]);
 
 impl Key {
-    pub fn new_from_string(string: &str) -> Key {
+    pub fn new_from_string(string: &str) -> Self {
         Key(Key::key_from_string(string))
     }
 
@@ -203,6 +203,7 @@ pub fn encrypt_aes_128(bytes: &[u8], key: &Key, options: &AESEncryptionOptions) 
 /// used in the Inverse Cipher - InvShiftRows(), InvSubBytes(),InvMixColumns(),
 /// and AddRoundKey() – process the State and are described in the following subsections.
 pub fn decrypt_aes_128(cipher: &[u8], key: &Key, mode: &BlockCipherMode) -> Vec<u8> {
+    let block_size = 16;
     let w = &key_expansion(key).0;
     let parts = bytes_to_parts(cipher);
     let mut deciphered: Vec<u8> = Vec::with_capacity(cipher.len());
@@ -236,7 +237,7 @@ pub fn decrypt_aes_128(cipher: &[u8], key: &Key, mode: &BlockCipherMode) -> Vec<
         deciphered.append(state.to_block().as_mut());
     }
 
-    remove_pkcs7_padding(&deciphered)
+    deciphered
 }
 
 pub fn bytes_to_parts(bytes: &[u8]) -> Vec<Vec<u8>> {
