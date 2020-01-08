@@ -385,36 +385,49 @@ pub fn cbc_padding_attack<O>(original_cipher: &[u8], padding_oracle: O) -> Vec<u
     let penultimate_block = &original_cipher[
         original_cipher.len() - (block_size * 2)..original_cipher.len() - block_size
         ];
-    let antepenultimate_block = &original_cipher[..original_cipher.len() - (block_size * 2)];
 
-    let mut block_result = VecDeque::new();
-    let mut intermediate_block = VecDeque::new();
+    let mut block_result = Vec::new();
+    // I2
+    let mut intermediate_block = Vec::new();
+
     for padding_length in 1u8..=15u8 {
+        let xored_intermediate_block = &intermediate_block.iter()
+            .map(|v| v ^ padding_length)
+            .rev()
+            .collect::<Vec<u8>>()[..];
+
+        // C1'[]
         for padding_byte in 0u8..=255u8 {
+            // C1'
             let modified_penultimate_block = &[
-                &penultimate_block[..penultimate_block.len() - padding_length as usize],
-                &vec![padding_byte][..],
-                &intermediate_block.iter().map(|v| v ^ padding_length).collect::<Vec<u8>>()[..]
+                &penultimate_block[..block_size - padding_length as usize],
+                &[padding_byte][..],
+                &xored_intermediate_block[..]
             ].concat();
 
+            assert_eq!(xored_intermediate_block.len() as u8, padding_length - 1);
+
+            ///assert_eq!(modified_penultimate_block.len(), 16usize);
+
             let modified_cipher = &[
-                &antepenultimate_block,
                 &modified_penultimate_block[..],
                 &last_block
             ].concat();
 
             let padding_is_valid = padding_oracle(&modified_cipher);
             if padding_is_valid {
-                dbg!(padding_byte);
-                intermediate_block.push_front(padding_byte ^ padding_length);
-                block_result.push_front(
-                    penultimate_block[0] ^ intermediate_block[0]);
+                // I2
+                intermediate_block.push(padding_byte ^ padding_length);
+                block_result.push(
+                    penultimate_block[block_size - padding_length as usize] ^
+                        *intermediate_block.last().unwrap());
                 break;
             }
         }
     }
 
-    dbg!(block_result);
+    dbg!(&block_result);
+    dbg!(String::from_utf8_lossy(&block_result));
 
     vec![]
 }
@@ -452,7 +465,9 @@ pub fn check_cipher_padding(cipher_with_iv_and_key: &CipherWithIvAndKey) -> bool
     match aes::validate_pkcs7_pad(&deciphered, block_size) {
         Err(PaddingError) => false,
         Ok(_) => {
+            dbg!("in decipherer:");
             dbg!(String::from_utf8_lossy(&deciphered));
+            dbg!(&deciphered.len());
             true
         }
     }
