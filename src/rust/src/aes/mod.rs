@@ -327,7 +327,7 @@ pub fn validate_pkcs7_pad(bytes: &[u8], block_size: u8) -> Result<(), PaddingErr
     let padding_length = *bytes.last().unwrap();
 
     if padding_length == 0
-        || padding_length >= block_size
+        || padding_length > block_size
         || padding_length as usize > bytes.len() {
         return Err(InvalidLastPaddingByte);
     }
@@ -341,14 +341,30 @@ pub fn validate_pkcs7_pad(bytes: &[u8], block_size: u8) -> Result<(), PaddingErr
     }
 }
 
-// TODO
 pub fn remove_pkcs7_padding(bytes: &[u8]) -> Vec<u8> {
-    bytes.to_vec()
+    let pad = *bytes.last().unwrap();
+
+    bytes[..bytes.len() - pad as usize].to_vec()
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use aes::generate::generate_bytes_for_length;
+
+    #[test]
+    fn validate_pkcs7_pad_test() {
+        let block_size = 16;
+        let block = &generate_bytes_for_length(block_size);
+        let pad = &vec![block_size as u8; block_size];
+
+        let padded_block = &[
+            &block[..],
+            &pad[..]
+        ].concat();
+
+        assert!(validate_pkcs7_pad(padded_block, block_size as u8).is_ok());
+    }
 
     #[test]
     fn rot_word_test() {

@@ -27,7 +27,7 @@ pub fn find_single_byte_xor(input: &[u8]) -> (char, f32, Vec<u8>) {
         let (_, best_score, _) = best;
 
         let xored = xor::single_byte_xor(&input, *character as u8);
-        let score = calculate_human_resemblance_score(&xored);
+        let score = human::calculate_human_resemblance_score(&xored);
 
         if score > best_score {
             best = (*character, score, xored);
@@ -43,14 +43,6 @@ pub fn find_single_byte_xor(input: &[u8]) -> (char, f32, Vec<u8>) {
 
 pub fn hex_find_single_byte_xor(hex_input: &[u8]) -> (char, f32, Vec<u8>) {
     find_single_byte_xor(&hex::hex_to_bytes(&hex_input))
-}
-
-fn calculate_human_resemblance_score(input: &[u8]) -> f32 {
-    let human_characters_count = input.iter()
-        .filter(|byte| human::ALPHABET.contains(&(**byte as char)))
-        .count();
-
-    human_characters_count as f32 / input.len() as f32
 }
 
 fn find_most_human(candidates: &Vec<Vec<u8>>) -> (char, f32, Vec<u8>, Vec<u8>) {

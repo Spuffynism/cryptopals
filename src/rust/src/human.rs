@@ -10,3 +10,11 @@ pub static ALPHABET: [char; 84] = [
     'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm',
     'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z',
 ];
+
+pub fn calculate_human_resemblance_score(input: &[u8]) -> f32 {
+    let human_characters_count = input.iter()
+        .filter(|byte| ALPHABET.contains(&(**byte as char)))
+        .count();
+
+    human_characters_count as f32 / input.len() as f32
+}

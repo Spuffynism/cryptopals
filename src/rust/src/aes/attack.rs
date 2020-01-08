@@ -3,6 +3,7 @@ use std::collections::{HashSet, HashMap, VecDeque};
 use std::ops::Range;
 use ::{human, aes};
 use profile::profile_for;
+use aes::generate::generate_bytes_for_length;
 
 /// Detectes the block cipher mode of a cipher.
 pub fn detect_block_cipher_mode<'a>(cipher: &[u8], iv: &'a Iv) -> BlockCipherMode<'a> {
@@ -380,56 +381,55 @@ fn prepend_and_append(input: &[u8]) -> Vec<u8> {
 pub fn cbc_padding_attack<O>(original_cipher: &[u8], padding_oracle: O) -> Vec<u8>
     where O: Fn(&[u8]) -> bool {
     let block_size = 16;
+    let mut result = Vec::new();
 
-    let last_block = &original_cipher[original_cipher.len() - block_size..];
-    let penultimate_block = &original_cipher[
-        original_cipher.len() - (block_size * 2)..original_cipher.len() - block_size
-        ];
+    for i in 0usize..(original_cipher.len() as f32 / block_size as f32).floor() as usize - 1 {
+        let penultimate_block = &original_cipher[(i * block_size)..(i * block_size) + block_size];
+        let last_block = &original_cipher[(i * block_size) + block_size..(i * block_size) +
+            (block_size * 2)];
 
-    let mut block_result = Vec::new();
-    // I2
-    let mut intermediate_block = Vec::new();
+        let mut block_result = Vec::new();
+        let mut intermediate_block = Vec::new();
 
-    for padding_length in 1u8..=15u8 {
-        let xored_intermediate_block = &intermediate_block.iter()
-            .map(|v| v ^ padding_length)
-            .rev()
-            .collect::<Vec<u8>>()[..];
+        let rand_bytes = &generate_bytes_for_length(block_size)[..];
 
-        // C1'[]
-        for padding_byte in 0u8..=255u8 {
-            // C1'
-            let modified_penultimate_block = &[
-                &penultimate_block[..block_size - padding_length as usize],
-                &[padding_byte][..],
-                &xored_intermediate_block[..]
-            ].concat();
+        let mut found = false;
+        for padding_length in 1u8..=16u8 {
+            let xored_intermediate_block = &intermediate_block.iter()
+                .map(|v| v ^ padding_length)
+                .rev()
+                .collect::<Vec<u8>>()[..];
 
-            assert_eq!(xored_intermediate_block.len() as u8, padding_length - 1);
+            for padding_byte in 0u8..=255u8 {
+                let modified_penultimate_block = &[
+                    &rand_bytes[..block_size - padding_length as usize],
+                    &[padding_byte][..],
+                    &xored_intermediate_block[..]
+                ].concat();
 
-            ///assert_eq!(modified_penultimate_block.len(), 16usize);
+                assert_eq!(modified_penultimate_block.len(), block_size);
 
-            let modified_cipher = &[
-                &modified_penultimate_block[..],
-                &last_block
-            ].concat();
+                let modified_cipher = &[
+                    &modified_penultimate_block[..],
+                    &last_block
+                ].concat();
 
-            let padding_is_valid = padding_oracle(&modified_cipher);
-            if padding_is_valid {
-                // I2
-                intermediate_block.push(padding_byte ^ padding_length);
-                block_result.push(
-                    penultimate_block[block_size - padding_length as usize] ^
-                        *intermediate_block.last().unwrap());
-                break;
+                let padding_is_valid = padding_oracle(&modified_cipher);
+                if padding_is_valid {
+                    intermediate_block.push(padding_byte ^ padding_length);
+                    block_result.push(
+                        penultimate_block[block_size - padding_length as usize] ^
+                            *intermediate_block.last().unwrap());
+                    break;
+                }
             }
         }
+
+        let mut ordered_block_result = &mut block_result.iter().cloned().rev().collect::<Vec<u8>>();
+        result.append(ordered_block_result);
     }
 
-    dbg!(&block_result);
-    dbg!(String::from_utf8_lossy(&block_result));
-
-    vec![]
+    result
 }
 
 pub fn build_cbc_padding_oracle<'a>(key: &'a aes::Key, iv: &'a aes::Iv,
@@ -465,9 +465,6 @@ pub fn check_cipher_padding(cipher_with_iv_and_key: &CipherWithIvAndKey) -> bool
     match aes::validate_pkcs7_pad(&deciphered, block_size) {
         Err(PaddingError) => false,
         Ok(_) => {
-            dbg!("in decipherer:");
-            dbg!(String::from_utf8_lossy(&deciphered));
-            dbg!(&deciphered.len());
             true
         }
     }
