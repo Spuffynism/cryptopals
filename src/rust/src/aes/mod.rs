@@ -83,15 +83,6 @@ const Rcon: [[u8; 4]; 10] = [
     [0x36, 0x00, 0x00, 0x00],
 ];
 
-#[derive(PartialEq, Debug)]
-pub struct Iv(pub [[u8; 4]; Nb]);
-
-impl Iv {
-    pub fn empty() -> Self {
-        Iv([[0; 4]; Nb])
-    }
-}
-
 pub struct Key(pub [u8; 16]);
 
 impl Key {
@@ -138,7 +129,20 @@ impl Default for AESEncryptionOptions<'_> {
 pub enum BlockCipherMode<'a> {
     ECB,
     CBC(&'a Iv),
+    CTR(&'a Nonce),
 }
+
+#[derive(PartialEq, Debug)]
+pub struct Block(pub [[u8; 4]; Nb]);
+
+impl Block {
+    pub fn empty() -> Self {
+        Block([[0; 4]; Nb])
+    }
+}
+
+type Iv = Block;
+type Nonce = Block;
 
 #[derive(PartialEq, Debug)]
 pub enum Padding {

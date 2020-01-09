@@ -53,4 +53,9 @@ mod tests {
 
         assert_eq!(calculate_human_resemblance_score(&deciphered_without_padding), 1f32);
     }
+
+    #[test]
+    fn challenge18_implement_ctr_mode() {
+
+    }
 }
