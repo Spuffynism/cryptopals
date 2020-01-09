@@ -2,7 +2,7 @@ use rand::RngCore;
 use aes;
 
 pub fn generate_aes_128_cbc_iv() -> aes::Iv {
-    aes::Iv([
+    aes::Block([
         [random_byte(), random_byte(), random_byte(), random_byte()],
         [random_byte(), random_byte(), random_byte(), random_byte()],
         [random_byte(), random_byte(), random_byte(), random_byte()],

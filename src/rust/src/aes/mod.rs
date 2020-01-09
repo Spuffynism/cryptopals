@@ -141,8 +141,8 @@ impl Block {
     }
 }
 
-type Iv = Block;
-type Nonce = Block;
+pub type Iv = Block;
+pub type Nonce = Block;
 
 #[derive(PartialEq, Debug)]
 pub enum Padding {
