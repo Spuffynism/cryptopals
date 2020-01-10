@@ -24,7 +24,9 @@ mod tests {
     use super::*;
     use file_util;
     use human::calculate_human_resemblance_score;
-    use aes::remove_pkcs7_padding;
+    use aes::{remove_pkcs7_padding, decrypt_aes_128, encrypt_aes_128, Key};
+    use aes::generate::generate_bytes_for_length;
+    use std::convert::TryInto;
 
     #[test]
     fn challenge17_base_case() {
@@ -56,6 +58,14 @@ mod tests {
 
     #[test]
     fn challenge18_implement_ctr_mode() {
+        let input = base64::decode(
+            "L77na/nrFsKvynd6HzOoG7GHTLXsTVu9qvY/2syLXzhPweyyMTJULu/6/kXX0KSvoOLSFQ=="
+        ).unwrap();
+        let key = Key::new_from_string("YELLOW SUBMARINE");
+        let mode = BlockCipherMode::CTR(&[0u8; 8]);
 
+        let deciphered = encrypt_aes_128(&input, &key, &AESEncryptionOptions::new(&mode, &Padding::None));
+
+        assert_eq!(calculate_human_resemblance_score(&deciphered), 1f32);
     }
 }

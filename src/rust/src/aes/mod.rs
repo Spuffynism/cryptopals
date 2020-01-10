@@ -142,7 +142,7 @@ impl Block {
 }
 
 pub type Iv = Block;
-pub type Nonce = Block;
+pub type Nonce = [u8; 8];
 
 #[derive(PartialEq, Debug)]
 pub enum Padding {
@@ -155,18 +155,23 @@ pub enum Padding {
 /// implementing a round function 10, 12, or 14 times (depending on the key length), with the
 /// final round differing slightly from the first Nr -1 rounds. The final State is then copied to
 /// the output as described in Sec. 3.4.
-pub fn encrypt_aes_128(bytes: &[u8], key: &Key, options: &AESEncryptionOptions) -> Vec<u8> {
+pub fn encrypt_aes_128(raw_bytes: &[u8], key: &Key, options: &AESEncryptionOptions) -> Vec<u8> {
     let block_size = 16;
+    let ctr_counter: u8 = 0;
 
     let w = &key_expansion(key).0;
-    let padded_bytes = &if options.padding == &PKCS7 {
-        pkcs7_pad(bytes, block_size)
+    let bytes = &if options.padding == &PKCS7 {
+        pkcs7_pad(raw_bytes, block_size)
     } else {
-        bytes.to_vec()
+        if let BlockCipherMode::CTR(nonce) = &options.block_cipher_mode {
+            generate_ctr_bytes_for_length(raw_bytes.len(), &nonce)
+        } else {
+            raw_bytes.to_vec()
+        }
     };
-    let parts = bytes_to_parts(padded_bytes);
+    let parts = bytes_to_parts(bytes);
 
-    let mut cipher: Vec<u8> = Vec::with_capacity(bytes.len());
+    let mut cipher: Vec<u8> = Vec::with_capacity(raw_bytes.len());
     let mut previous_state: state::State = state::State::empty();
 
     for (i, part) in parts.iter().enumerate() {
@@ -199,7 +204,31 @@ pub fn encrypt_aes_128(bytes: &[u8], key: &Key, options: &AESEncryptionOptions) 
         cipher.append(state.to_block().as_mut());
     }
 
-    cipher
+    if let BlockCipherMode::CTR(_nonce) = &options.block_cipher_mode {
+        xor::fixed_key_xor(&raw_bytes, &cipher)
+    } else {
+        cipher
+    }
+}
+
+fn generate_ctr_bytes_for_length(length: usize, nonce: &Nonce) -> Vec<u8> {
+    let block_size = 16;
+    let mut counter = 0u8;
+    (0..length - (length % block_size) + block_size).collect::<Vec<usize>>()
+        .iter()
+        .enumerate()
+        .map(|(i, _)| {
+            return if (i % block_size) < nonce.len() {
+                nonce[i % block_size]
+            } else if (i % block_size) == nonce.len() {
+                counter += 1;
+
+                counter - 1
+            } else {
+                0u8
+            };
+        })
+        .collect::<Vec<u8>>()
 }
 
 /// The Cipher transformations in Sec. 5.1 can be inverted and then implemented in reverse order to
