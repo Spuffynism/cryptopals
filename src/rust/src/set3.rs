@@ -22,15 +22,15 @@ pub fn generate_cbc_padding_oracle_cipher<'a>(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use file_util;
+    use file;
     use human::calculate_human_resemblance_score;
     use aes::{remove_pkcs7_padding, decrypt_aes_128, encrypt_aes_128, Key};
-    use aes::generate::generate_bytes_for_length;
+    use aes::generate::{generate_bytes_for_length, generate_aes_128_key};
     use std::convert::TryInto;
 
     #[test]
     fn challenge17_base_case() {
-        let lines = file_util::read_file_lines("./resources/17.txt");
+        let lines = file::read_file_lines("./resources/17.txt");
         let key = aes::generate::generate_aes_128_key();
         let iv = aes::generate::generate_aes_128_cbc_iv();
         let cipher_with_iv_and_key = generate_cbc_padding_oracle_cipher(&lines, &key, &iv);
@@ -41,7 +41,7 @@ mod tests {
 
     #[test]
     fn challenge17_do_attack() {
-        let lines = file_util::read_file_lines("./resources/17.txt");
+        let lines = file::read_file_lines("./resources/17.txt");
         let key = aes::generate::generate_aes_128_key();
         let iv = aes::generate::generate_aes_128_cbc_iv();
         let cipher_with_iv_and_key = generate_cbc_padding_oracle_cipher(&lines, &key, &iv);
@@ -67,5 +67,26 @@ mod tests {
         let deciphered = encrypt_aes_128(&input, &key, &AESEncryptionOptions::new(&mode, &Padding::None));
 
         assert_eq!(calculate_human_resemblance_score(&deciphered), 1f32);
+    }
+
+    #[test]
+    fn challenge19_break_fixed_nonce_ctr_mode_using_substitutions() {
+        let lines = file::read_base64_file_lines("./resources/19.txt");
+        let nonce = &[0u8; 8];
+        let key = generate_aes_128_key();
+        let mode = BlockCipherMode::CTR(nonce);
+        let options = AESEncryptionOptions::new(&mode, &Padding::None);
+        let mut ciphers = Vec::with_capacity(lines.len());
+
+        for line in lines.iter() {
+            let cipher = encrypt_aes_128(
+                &line,
+                &key,
+                &options,
+            );
+            ciphers.push(cipher);
+        }
+
+        unimplemented!()
     }
 }

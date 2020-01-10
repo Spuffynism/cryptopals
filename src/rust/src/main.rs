@@ -6,7 +6,7 @@ mod profile;
 mod human;
 mod hex;
 mod aes;
-mod file_util;
+mod file;
 mod xor;
 
 mod set1;

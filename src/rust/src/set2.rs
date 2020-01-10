@@ -37,7 +37,7 @@ pub fn is_admin(cipher: &[u8], key: &aes::Key, iv: &aes::Iv) -> bool {
 mod tests {
     use super::*;
     use ::aes;
-    use file_util;
+    use file;
     use aes::BlockCipherMode;
     use aes::PaddingError::{PaddingNotConsistent, InvalidLastPaddingByte};
 
@@ -67,7 +67,7 @@ mod tests {
 
     #[test]
     fn challenge10() {
-        let cbc_cipher = &file_util::read_base64_file_bytes("./resources/10.txt");
+        let cbc_cipher = &file::read_base64_file_bytes("./resources/10.txt");
         let key = &aes::Key::new_from_string("YELLOW SUBMARINE");
         let iv = &aes::Iv::empty();
         let mode = &BlockCipherMode::CBC(iv);
@@ -100,7 +100,7 @@ mod tests {
     #[test]
     #[ignore] // takes up to 2 minutes to run.
     fn challenge12() {
-        let unknown_string = file_util::read_base64_file_bytes("./resources/12.txt");
+        let unknown_string = file::read_base64_file_bytes("./resources/12.txt");
         let key = aes::generate::generate_aes_128_key();
         let oracle = aes::attack::build_byte_at_a_time_simple_oracle(&unknown_string, &key);
         let deciphered = aes::attack::byte_at_a_time_ecb_simple_decryption(oracle, 0, &vec![]);
@@ -127,7 +127,7 @@ mod tests {
     fn challenge14() {
         let random_prefix = aes::generate::generate_bytes_for_length(rand::thread_rng().gen_range
         (5, 64));
-        let unknown_string = file_util::read_base64_file_bytes("./resources/12.txt");
+        let unknown_string = file::read_base64_file_bytes("./resources/12.txt");
         let key = aes::generate::generate_aes_128_key();
         let oracle = aes::attack::build_byte_at_a_time_harder_oracle(
             &random_prefix,
