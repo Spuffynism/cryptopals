@@ -37,7 +37,7 @@ pub fn is_admin(cipher: &[u8], key: &aes::Key, iv: &aes::Iv) -> bool {
 mod tests {
     use super::*;
     use ::aes;
-    use file;
+    use ::{file, attack};
     use aes::BlockCipherMode;
     use aes::PaddingError::{PaddingNotConsistent, InvalidLastPaddingByte};
 
@@ -91,7 +91,7 @@ mod tests {
             let (cipher, expected_mode) = encrypt_under_random_key(&input, iv);
 
             let iv = &aes::Iv::empty();
-            let found_mode = aes::attack::detect_block_cipher_mode(&cipher, iv);
+            let found_mode = attack::ecb::detect_block_cipher_mode(&cipher, iv);
 
             assert_eq!(std::mem::discriminant(&found_mode), std::mem::discriminant(&expected_mode))
         }
@@ -102,8 +102,8 @@ mod tests {
     fn challenge12() {
         let unknown_string = file::read_base64_file_bytes("./resources/12.txt");
         let key = aes::generate::generate_aes_128_key();
-        let oracle = aes::attack::build_byte_at_a_time_simple_oracle(&unknown_string, &key);
-        let deciphered = aes::attack::byte_at_a_time_ecb_simple_decryption(oracle, 0, &vec![]);
+        let oracle = attack::ecb::build_byte_at_a_time_simple_oracle(&unknown_string, &key);
+        let deciphered = attack::ecb::byte_at_a_time_ecb_simple_decryption(oracle, 0, &vec![]);
 
         assert!(deciphered.starts_with("Rollin' in my 5.0\nWith".as_bytes()));
         assert!(deciphered.ends_with("No, I just drove by\n".as_bytes()));
@@ -113,7 +113,7 @@ mod tests {
     fn challenge13() {
         let key = aes::generate::generate_aes_128_key();
 
-        let cipher = aes::attack::ecb_cut_and_paste(&key);
+        let cipher = attack::ecb::ecb_cut_and_paste(&key);
         let decrypted_encoded_profile = aes::decrypt_aes_128(&cipher, &key,
                                                              &BlockCipherMode::ECB);
 
@@ -129,12 +129,12 @@ mod tests {
         (5, 64));
         let unknown_string = file::read_base64_file_bytes("./resources/12.txt");
         let key = aes::generate::generate_aes_128_key();
-        let oracle = aes::attack::build_byte_at_a_time_harder_oracle(
+        let oracle = attack::ecb::build_byte_at_a_time_harder_oracle(
             &random_prefix,
             &unknown_string,
             &key,
         );
-        let deciphered = aes::attack::byte_at_a_time_ecb_harder_decryption(oracle);
+        let deciphered = attack::ecb::byte_at_a_time_ecb_harder_decryption(oracle);
 
         assert!(deciphered.starts_with("Rollin' in my 5.0\nWith".as_bytes()));
         assert!(deciphered.ends_with("No, I just drove by\n".as_bytes()));
@@ -202,9 +202,9 @@ mod tests {
         let key = &aes::generate::generate_aes_128_key();
         let iv = &aes::generate::generate_aes_128_cbc_iv();
         let mode = &BlockCipherMode::CBC(iv);
-        let oracle = aes::attack::build_cbc_bitflip_oracle(key, mode);
+        let oracle = attack::cbc::build_cbc_bitflip_oracle(key, mode);
 
-        let cipher = aes::attack::cbc_bitflip(&oracle, key, iv);
+        let cipher = attack::cbc::cbc_bitflip(&oracle, key, iv);
         let is_admin = is_admin(&cipher, key, iv);
 
         assert!(is_admin);

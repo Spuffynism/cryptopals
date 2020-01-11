@@ -9,7 +9,6 @@ use aes::Padding::PKCS7;
 
 mod state;
 mod math;
-pub mod attack;
 pub mod generate;
 
 /// Number of columns (32-bit words) comprising the State. For this standard, Nb = 4.

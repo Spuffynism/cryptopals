@@ -1,7 +1,7 @@
 use aes;
 use rand::Rng;
 use aes::{BlockCipherMode, AESEncryptionOptions, Padding};
-use aes::attack::CipherWithIvAndKey;
+use attack::CipherWithIvAndKey;
 
 pub fn generate_cbc_padding_oracle_cipher<'a>(
     lines: &'a Vec<Vec<u8>>,
@@ -22,7 +22,7 @@ pub fn generate_cbc_padding_oracle_cipher<'a>(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use file;
+    use ::{file, attack};
     use human::calculate_human_resemblance_score;
     use aes::{remove_pkcs7_padding, decrypt_aes_128, encrypt_aes_128, Key};
     use aes::generate::{generate_bytes_for_length, generate_aes_128_key};
@@ -34,7 +34,7 @@ mod tests {
         let key = aes::generate::generate_aes_128_key();
         let iv = aes::generate::generate_aes_128_cbc_iv();
         let cipher_with_iv_and_key = generate_cbc_padding_oracle_cipher(&lines, &key, &iv);
-        let padding_is_ok = aes::attack::check_cipher_padding(&cipher_with_iv_and_key);
+        let padding_is_ok = attack::cbc::check_cipher_padding(&cipher_with_iv_and_key);
 
         assert!(padding_is_ok);
     }
@@ -45,12 +45,12 @@ mod tests {
         let key = aes::generate::generate_aes_128_key();
         let iv = aes::generate::generate_aes_128_cbc_iv();
         let cipher_with_iv_and_key = generate_cbc_padding_oracle_cipher(&lines, &key, &iv);
-        let oracle = aes::attack::build_cbc_padding_oracle(
+        let oracle = attack::cbc::build_cbc_padding_oracle(
             &cipher_with_iv_and_key.key,
             &cipher_with_iv_and_key.iv,
         );
 
-        let deciphered = aes::attack::cbc_padding_attack(&cipher_with_iv_and_key.cipher, oracle);
+        let deciphered = attack::cbc::cbc_padding_attack(&cipher_with_iv_and_key.cipher, oracle);
         let deciphered_without_padding = remove_pkcs7_padding(&deciphered);
 
         assert_eq!(calculate_human_resemblance_score(&deciphered_without_padding), 1f32);

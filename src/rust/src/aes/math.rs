@@ -30,18 +30,23 @@ mod tests {
 
     #[test]
     fn multiply_in_g_test() {
-        let test_cases: Vec<(u8, u8, u8)> = vec![
-            (0x57, 0x83, 0xc1),
-            (0x57, 0x13, 0xfe),
-            (0x57, 0x02, 0xae),
-            (0x57, 0x04, 0x47),
-            (0x57, 0x08, 0x8e),
-            (0x57, 0x10, 0x07)
+        struct TestCase {
+            a: u8,
+            b: u8,
+            expected: u8,
+        }
+        let test_cases: Vec<TestCase> = vec![
+            TestCase { a: 0x57, b: 0x83, expected: 0xc1 },
+            TestCase { a: 0x57, b: 0x13, expected: 0xfe },
+            TestCase { a: 0x57, b: 0x02, expected: 0xae },
+            TestCase { a: 0x57, b: 0x04, expected: 0x47 },
+            TestCase { a: 0x57, b: 0x08, expected: 0x8e },
+            TestCase { a: 0x57, b: 0x10, expected: 0x07 }
         ];
 
-        for (a, b, expected) in test_cases.iter() {
-            let actual_result = multiply_in_g(*a, *b);
-            assert_eq!(actual_result, *expected);
+        for case in test_cases.iter() {
+            let actual_result = multiply_in_g(case.a, case.b);
+            assert_eq!(actual_result, case.expected);
         }
     }
 }

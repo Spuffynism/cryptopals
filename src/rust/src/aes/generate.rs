@@ -2,11 +2,12 @@ use rand::RngCore;
 use aes;
 
 pub fn generate_aes_128_cbc_iv() -> aes::Iv {
+    let byte = random_byte;
     aes::Block([
-        [random_byte(), random_byte(), random_byte(), random_byte()],
-        [random_byte(), random_byte(), random_byte(), random_byte()],
-        [random_byte(), random_byte(), random_byte(), random_byte()],
-        [random_byte(), random_byte(), random_byte(), random_byte()]
+        [byte(), byte(), byte(), byte()],
+        [byte(), byte(), byte(), byte()],
+        [byte(), byte(), byte(), byte()],
+        [byte(), byte(), byte(), byte()]
     ])
 }
 
@@ -67,6 +68,5 @@ mod tests {
 
     fn assert_some_randomness<T>(random_bytes: &[T]) {
         assert!(!random_bytes.is_empty());
-        // assert!(!random_bytes.is_sorted());
     }
 }
