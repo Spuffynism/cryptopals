@@ -27,6 +27,7 @@ mod tests {
     use aes::{remove_pkcs7_padding, decrypt_aes_128, encrypt_aes_128, Key};
     use aes::generate::{generate_bytes_for_length, generate_aes_128_key};
     use std::convert::TryInto;
+    use attack::ctr::break_fixed_nonce_ctr_mode_using_substitutions;
 
     #[test]
     fn challenge17_base_case() {
@@ -72,21 +73,16 @@ mod tests {
     #[test]
     fn challenge19_break_fixed_nonce_ctr_mode_using_substitutions() {
         let lines = file::read_base64_file_lines("./resources/19.txt");
+
         let nonce = &[0u8; 8];
-        let key = generate_aes_128_key();
+        let key = Key::new_from_string("YELLOW SUBMARINE"); // TODO(nich): Use random AES key
         let mode = BlockCipherMode::CTR(nonce);
         let options = AESEncryptionOptions::new(&mode, &Padding::None);
-        let mut ciphers = Vec::with_capacity(lines.len());
 
-        for line in lines.iter() {
-            let cipher = encrypt_aes_128(
-                &line,
-                &key,
-                &options,
-            );
-            ciphers.push(cipher);
-        }
+        let mut ciphers = lines.iter()
+            .map(|line| encrypt_aes_128(&line, &key, &options))
+            .collect();
 
-        unimplemented!()
+        break_fixed_nonce_ctr_mode_using_substitutions(&ciphers);
     }
 }

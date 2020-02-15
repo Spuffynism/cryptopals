@@ -216,8 +216,8 @@ fn generate_ctr_bytes_for_length(length: usize, nonce: &Nonce) -> Vec<u8> {
     (0..length - (length % block_size) + block_size).collect::<Vec<usize>>()
         .iter()
         .enumerate()
-        .map(|(i, _)| {
-            return if (i % block_size) < nonce.len() {
+        .map(|(i, _)|
+            if (i % block_size) < nonce.len() {
                 nonce[i % block_size]
             } else if (i % block_size) == nonce.len() {
                 counter += 1;
@@ -225,8 +225,8 @@ fn generate_ctr_bytes_for_length(length: usize, nonce: &Nonce) -> Vec<u8> {
                 counter - 1
             } else {
                 0u8
-            };
-        })
+            }
+        )
         .collect::<Vec<u8>>()
 }
 
@@ -483,6 +483,13 @@ mod tests {
     }
 
     #[test]
+    fn generate_ctr_bytes_for_length_test() {
+        // TODO(nich): Implement this
+
+        assert_eq!(false, true);
+    }
+
+    #[test]
     fn decrypt_aes_128_in_ecb_mode_nist_test_case() {
         let cipher: &[u8] = &[
             0x69, 0xc4, 0xe0, 0xd8,
@@ -590,5 +597,29 @@ mod tests {
         let actual_deciphered = decrypt_aes_128(&cipher, key, &BlockCipherMode::CBC(iv));
 
         assert_eq!(raw, &actual_deciphered[..]);
+    }
+
+    #[test]
+    fn encrypt_and_decrypt_ctr() {
+        let raw: &[u8] = &[
+            0x0, 0x11, 0x22, 0x33,
+            0x44, 0x55, 0x66, 0x77,
+            0x88, 0x99, 0xaa, 0xbb,
+            0xcc, 0xdd, 0xee, 0xff,
+            // use multiple blocks to test running counter
+            0x0, 0x11, 0x22, 0x33,
+            0x44, 0x55, 0x66, 0x77,
+            0x88, 0x99, 0xaa, 0xbb,
+            0xcc, 0xdd, 0xee, 0xff,
+        ];
+
+        let key = Key::new_from_string("YELLOW SUBMARINE");
+        let mode = BlockCipherMode::CTR(&[0u8; 8]);
+        let options = &AESEncryptionOptions::new(&mode, &Padding::None);
+
+        let ciphered = encrypt_aes_128(&raw, &key, &options);
+        let deciphered = encrypt_aes_128(&ciphered, &key, &options);
+
+        assert_eq!(deciphered, raw);
     }
 }

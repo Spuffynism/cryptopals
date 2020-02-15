@@ -60,25 +60,24 @@ fn find_most_human(candidates: &Vec<Vec<u8>>) -> (char, f32, Vec<u8>, Vec<u8>) {
     most_human
 }
 
-fn break_repeating_key_xor(cipher: &[u8], min_key_size: i32, max_key_size: i32) -> (Vec<u8>, Vec<u8>) {
-    let mut best_key_size = 0;
+fn break_repeating_key_xor(cipher: &[u8], min_key_size: usize, max_key_size: usize) -> (Vec<u8>, Vec<u8>) {
+    let mut best_key_size = 0usize;
     let mut best_normalized_hamming_distance = std::f32::MAX;
 
     for key_size in min_key_size..max_key_size {
-        let mut i: i32 = 0;
+        let mut i = 0usize;
         let mut normalized_hamming_distances: Vec<f32> = Vec::new();
 
         loop {
-            let first: Vec<u8> = cipher[i as usize..(i + key_size) as usize].to_vec();
-            let second: Vec<u8> = cipher[(i + key_size) as usize..(i + (key_size * 2)) as
-                usize].to_vec();
+            let first: Vec<u8> = cipher[i..i + key_size].to_vec();
+            let second: Vec<u8> = cipher[i + key_size..i + (key_size * 2)].to_vec();
 
             normalized_hamming_distances.push(
                 normalized_hamming_distance_in_bits(&first.to_vec(), &second.to_vec()));
 
             i += key_size * 2;
 
-            if (i + key_size * 2) as usize >= cipher.len() {
+            if i + key_size * 2 >= cipher.len() {
                 break;
             }
         }
@@ -101,11 +100,11 @@ fn break_repeating_key_xor(cipher: &[u8], min_key_size: i32, max_key_size: i32) 
 
     for j in 0..best_key_size {
         for i in 0..rows_length {
-            if (i as i32 * best_key_size + j) as usize >= cipher.len() {
+            if i * best_key_size + j >= cipher.len() {
                 break;
             }
 
-            rows[j as usize].push(cipher[(i as i32 * best_key_size + j) as usize]);
+            rows[j as usize].push(cipher[i* best_key_size + j]);
         }
     }
 

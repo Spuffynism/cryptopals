@@ -1,5 +1,5 @@
-pub static ALPHABET: [char; 84] = [
-    '\n', '\r', '\t',
+pub static ALPHABET: [char; 85] = [
+    '\n', '\r', '\t', 0x00 as char,
     ' ', '!', '"', '$', '%', '&', '\'', '(', ')', ',',
     '-', '.', '/', '=', '@',
     '0', '1', '2', '3', '4', '5', '6', '7', '8', '9',
@@ -13,7 +13,7 @@ pub static ALPHABET: [char; 84] = [
 
 pub fn calculate_human_resemblance_score(input: &[u8]) -> f32 {
     let human_characters_count = input.iter()
-        .filter(|byte| ALPHABET.contains(&(**byte as char)))
+        .filter(|&&byte| ALPHABET.contains(&(byte as char)))
         .count();
 
     human_characters_count as f32 / input.len() as f32
