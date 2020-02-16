@@ -90,4 +90,20 @@ mod tests {
                 assert!(calculate_human_resemblance_score(line) > 0.95f32)
             });
     }
+
+    #[test]
+    fn challenge20_break_fixed_nonce_ctr_mode_statistically() {
+        let lines = file::read_base64_file_lines("./resources/20.txt");
+
+        let nonce = &[0u8; 8];
+        let key = generate_aes_128_key();
+        let mode = BlockCipherMode::CTR(nonce);
+        let options = AESEncryptionOptions::new(&mode, &Padding::None);
+
+        let mut ciphers = lines.iter()
+            .map(|line| encrypt_aes_128(&line, &key, &options))
+            .collect();
+
+        // TODO(nich): Break multiple repeating-key xor
+    }
 }
