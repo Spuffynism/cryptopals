@@ -75,7 +75,7 @@ mod tests {
         let lines = file::read_base64_file_lines("./resources/19.txt");
 
         let nonce = &[0u8; 8];
-        let key = Key::new_from_string("YELLOW SUBMARINE"); // TODO(nich): Use random AES key
+        let key = generate_aes_128_key();
         let mode = BlockCipherMode::CTR(nonce);
         let options = AESEncryptionOptions::new(&mode, &Padding::None);
 
@@ -83,6 +83,11 @@ mod tests {
             .map(|line| encrypt_aes_128(&line, &key, &options))
             .collect();
 
-        break_fixed_nonce_ctr_mode_using_substitutions(&ciphers);
+        let deciphered = break_fixed_nonce_ctr_mode_using_substitutions(&ciphers);
+
+        deciphered.iter()
+            .for_each(|line| {
+                assert!(calculate_human_resemblance_score(line) > 0.95f32)
+            });
     }
 }

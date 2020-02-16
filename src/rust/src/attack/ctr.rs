@@ -1,27 +1,42 @@
 use aes::Key;
 use human;
 use std::sync::mpsc::channel;
+use std::cmp::max;
+use xor::single_byte_xor;
 
-pub fn break_fixed_nonce_ctr_mode_using_substitutions(ciphers: &Vec<Vec<u8>>) -> Key {
+pub fn break_fixed_nonce_ctr_mode_using_substitutions(ciphers: &Vec<Vec<u8>>) -> Vec<Vec<u8>> {
     #[derive(Copy, Clone)]
     struct Best {
         score: f32,
         character: char,
     }
 
-    let mut best_keystream = vec![Best { score: -1f32, character: 0x00 as char }; 16];
+    let longest_cipher_length = ciphers.iter()
+        .fold(0, |acc, v| max(v.len(), acc));
+    let mut best_keystream = vec![Best { score: -1f32, character: 0x00 as char }; longest_cipher_length];
 
     for possible_keystream_byte in 0..=255 {
-        // CIPHERTEXT ^ KEYSTREAM
-        let ciphers_nonce_parts = extract_nonce_length_from_ciphers(
+        let xored_ciphers = xor_with_possible_keystream_byte(
             ciphers,
             possible_keystream_byte,
         );
 
-        let to_analyze_for_human: Vec<Vec<u8>> = transpose_matrix(&ciphers_nonce_parts);
+        let normalized_xored_ciphers = xored_ciphers.iter()
+            .map(|cipher| {
+                cipher.iter().map(|&byte| Some(byte)).collect::<Vec<Option<u8>>>()
+            })
+            .map(|cipher| {
+                [&cipher[..], &vec![None; longest_cipher_length - cipher.len()][..]].concat()
+            })
+            .collect::<Vec<Vec<Option<u8>>>>();
+
+        let to_analyze_for_human: Vec<Vec<Option<u8>>> = transpose_matrix(&normalized_xored_ciphers);
 
         for (i, slice) in to_analyze_for_human.iter().enumerate() {
-            let score = human::calculate_human_resemblance_score(&slice);
+            let some_slice = slice.iter()
+                .filter_map(|&v| v)
+                .collect::<Vec<u8>>();
+            let score = human::calculate_human_resemblance_score(&some_slice);
 
             if best_keystream[i].score < score {
                 best_keystream[i] = Best { score, character: possible_keystream_byte as char };
@@ -29,42 +44,36 @@ pub fn break_fixed_nonce_ctr_mode_using_substitutions(ciphers: &Vec<Vec<u8>>) ->
         }
     }
 
-    let result = &mut vec![vec![0;16]; ciphers.len()];
+    let deciphered = &mut vec![vec![]; ciphers.len()];
     for (i, cipher) in ciphers.iter().enumerate() {
-        for (j, &byte) in cipher[..16].iter().enumerate() {
-            result[i][j] = byte ^ best_keystream[j].character as u8;
+        for (j, &byte) in cipher.iter().enumerate() {
+            deciphered[i].push(byte ^ best_keystream[j].character as u8);
         }
     }
 
-    dbg!(result);
-
-    Key([0; 16])
+    deciphered.to_vec()
 }
 
-fn transpose_matrix(matrix: &Vec<Vec<u8>>) -> Vec<Vec<u8>> {
+fn transpose_matrix<T : Copy>(matrix: &Vec<Vec<T>>) -> Vec<Vec<T>> {
     let width = matrix[0].len();
     let height = matrix.len();
-    let transposed = &mut vec![vec![0u8; height]; width];
+    let transposed = &mut vec![vec![]; width];
 
     for (i, row) in matrix.iter().enumerate() {
         for (j, _) in row.iter().enumerate() {
-            transposed[j][i] = matrix[i][j];
+            transposed[j].push(matrix[i][j]);
         }
     }
 
     transposed.iter()
         .map(|v| v.to_vec())
-        .collect::<Vec<Vec<u8>>>()
+        .collect::<Vec<Vec<T>>>()
 }
 
-fn extract_nonce_length_from_ciphers(ciphers: &Vec<Vec<u8>>, possible_keystream_byte: u8)
-                                     -> Vec<Vec<u8>> {
+fn xor_with_possible_keystream_byte(ciphers: &Vec<Vec<u8>>, possible_keystream_byte: u8)
+                                    -> Vec<Vec<u8>> {
     ciphers.iter()
-        .map(|v| {
-            v[..16].iter()
-                .map(|byte| byte ^ possible_keystream_byte)
-                .collect::<Vec<u8>>()
-        })
+        .map(|v| single_byte_xor(v, possible_keystream_byte))
         .collect::<Vec<Vec<u8>>>()
 }
 
@@ -86,7 +95,7 @@ mod tests {
         ];
         let possible_keystream_byte = 0b100u8;
 
-        let resultant_ciphers = extract_nonce_length_from_ciphers(&ciphers, possible_keystream_byte);
+        let resultant_ciphers = xor_with_possible_keystream_byte(&ciphers, possible_keystream_byte);
 
         assert_eq!(resultant_ciphers, expected_ciphers);
     }
