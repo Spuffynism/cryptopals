@@ -100,10 +100,11 @@ mod tests {
         let mode = BlockCipherMode::CTR(nonce);
         let options = AESEncryptionOptions::new(&mode, &Padding::None);
 
-        let mut ciphers = lines.iter()
+        /*let mut ciphers = lines.iter()
             .map(|line| encrypt_aes_128(&line, &key, &options))
-            .collect();
+            .collect();*/
 
         // TODO(nich): Break multiple repeating-key xor
+        // xor::break_repeating_key_xor()
     }
 }

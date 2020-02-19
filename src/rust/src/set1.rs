@@ -61,19 +61,23 @@ fn find_most_human(candidates: &Vec<Vec<u8>>) -> (char, f32, Vec<u8>, Vec<u8>) {
 }
 
 fn break_repeating_key_xor(cipher: &[u8], min_key_size: usize, max_key_size: usize) -> (Vec<u8>, Vec<u8>) {
-    let mut best_key_size = 0usize;
-    let mut best_normalized_hamming_distance = std::f32::MAX;
+    struct Best {
+        key_size: usize,
+        hamming_distance: f32,
+    }
+
+    let mut best = Best { key_size: 0usize, hamming_distance: std::f32::MAX };
 
     for key_size in min_key_size..max_key_size {
         let mut i = 0usize;
-        let mut normalized_hamming_distances: Vec<f32> = Vec::new();
+        let mut hamming_distances = Vec::new();
 
         loop {
-            let first: Vec<u8> = cipher[i..i + key_size].to_vec();
-            let second: Vec<u8> = cipher[i + key_size..i + (key_size * 2)].to_vec();
+            let first = &cipher[i..i + key_size];
+            let second = &cipher[i + key_size..i + (key_size * 2)];
 
-            normalized_hamming_distances.push(
-                normalized_hamming_distance_in_bits(&first.to_vec(), &second.to_vec()));
+            hamming_distances.push(
+                normalized_hamming_distance_in_bits(&first, &second));
 
             i += key_size * 2;
 
@@ -82,29 +86,25 @@ fn break_repeating_key_xor(cipher: &[u8], min_key_size: usize, max_key_size: usi
             }
         }
 
-        let normalized_hamming_distance_sum: f32 = normalized_hamming_distances
-            .iter()
-            .fold(0f32, |acc, v| acc + *v);
-        let normalized_hamming_distance = normalized_hamming_distance_sum /
-            normalized_hamming_distances.len() as f32;
+        let hamming_distances_sum = hamming_distances.iter().sum::<f32>();
+        let hamming_distance = hamming_distances_sum / hamming_distances.len() as f32;
 
-        if normalized_hamming_distance < best_normalized_hamming_distance {
-            best_key_size = key_size;
-            best_normalized_hamming_distance = normalized_hamming_distance;
+        if hamming_distance < best.hamming_distance {
+            best = Best { key_size, hamming_distance };
         }
     }
 
-    let mut rows = vec![vec![]; best_key_size as usize];
+    let mut rows = vec![vec![]; best.key_size];
 
-    let rows_length = (cipher.len() as f32 / best_key_size as f32).ceil() as usize;
+    let rows_length = (cipher.len() as f32 / best.key_size as f32).ceil() as usize;
 
-    for j in 0..best_key_size {
+    for j in 0..best.key_size {
         for i in 0..rows_length {
-            if i * best_key_size + j >= cipher.len() {
+            if i * best.key_size + j >= cipher.len() {
                 break;
             }
 
-            rows[j as usize].push(cipher[i* best_key_size + j]);
+            rows[j].push(cipher[i * best.key_size + j]);
         }
     }
 
@@ -237,7 +237,7 @@ mod tests {
             ("2173896", "2233796", 7),
             // cryptopals test case
             ("this is a test", "wokka wokka!!!", 37)
-        ][..];
+        ];
 
         for (from, to, expected_distance) in test_cases {
             assert_eq!(
@@ -257,7 +257,7 @@ mod tests {
             ("2173896", "2233796", 7),
             // cryptopals test case
             ("this is a test", "wokka wokka!!!", 37)
-        ][..];
+        ];
 
         for (from, to, expected_hamming_distance) in test_cases {
             let expected_normalized_hamming_distance =
