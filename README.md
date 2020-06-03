@@ -2,11 +2,13 @@
 
 (An attempt at) solving the [cryptopals crypto challenges](https://cryptopals.com)
 
-# Running tests
+# Intro
 
-Run tests with `cargo test`
+Solutions are unit tests in [set1.rs](src/set1.rs), [set2.rs](src/set2.rs), set{set_number}.rs files in their respective `tests` module.
 
-## TODO
+Run them with `cargo test challenge` and run all tests with `cargo test`
 
-- Rename challenge names to include `challenge_{nb}_{name_of_challenge}`
+# TODO
+
+- Rename challenge names to the form of `challenge_{nb}_{name_of_challenge}`
 - Set 3 challenge 20
