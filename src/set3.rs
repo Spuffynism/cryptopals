@@ -92,6 +92,7 @@ mod tests {
     }
 
     #[test]
+    #[ignore] // incomplete
     fn challenge20_break_fixed_nonce_ctr_mode_statistically() {
         let lines = file::read_base64_file_lines("./resources/20.txt");
 
