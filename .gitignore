@@ -1,2 +1,4 @@
 .idea
-src/rust/target
+target
+*.exe
+*.pdb
